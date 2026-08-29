@@ -729,7 +729,7 @@ function topbar(){
     subnav+
     (MODE==='local'
       ? '<div class="demoflag">🧪 로컬 테스트(?demo=1) — 예시 데이터(실명 아님). 브라우저에만 저장.</div>'
-      : '<div class="demoflag">🚀 배포 빌드 — Supabase 연동 후 동작(준비 단계). 데이터는 서버에 저장됩니다.</div>');
+      : '<div class="demoflag">🟢 서버 연결됨 — 데이터는 Supabase(서버)에 저장됩니다.</div>');
 }
 function setClassView(c){ SESS.classView=c; render(); }
 
@@ -747,7 +747,7 @@ function viewLogin(){
     '<div class="muted" style="margin-top:14px">비밀번호 없이 <b>명단 대조</b>로 확인합니다(PBL 앱과 동일).<br>'+
     (MODE==='local'
       ? '예시 로그인(테스트) — 학생: <b>예시학생01 / 90000100</b> · 교수(슈퍼): <b>예시교수A / T0001</b></div>'
-      : '<span style="color:#c23a3a">⚠️ 이 빌드는 Supabase 연동 후 로그인됩니다(준비 단계). 로컬 테스트는 주소 끝에 <b>?demo=1</b> 을 붙이세요.</span></div>')+
+      : '학생은 출석부의 <b>이름 + 학번</b>, 교수는 <b>이름 + 교번</b>으로 로그인합니다.</div>')+
   '</div>';
 }
 function setRole(r){ loginRole=r; render(); }
