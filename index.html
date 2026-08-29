@@ -9,12 +9,12 @@
   『바이오취업역량개발』 진로설문·진로지도 웹앱 — 로컬 시제품 뼈대 (v0.1)
   ----------------------------------------------------------------------------
   · PBL 앱(dmu-bio/pbl) 구조 재활용: 무비번 명단대조 로그인 + 표=jsonb 저장.
-  · 이 시제품은 mode='local' — 브라우저(localStorage)에만 저장합니다.
-    서버(Supabase)에는 한 줄도 쓰지 않습니다. 시연·검토용입니다.
+  · 이 빌드는 기본 mode='remote' — 로그인·저장이 서버(Supabase)로 동작합니다.
+    로컬 테스트가 필요하면 주소 끝에 ?demo=1 (브라우저 저장·가짜 예시 데이터).
   · 🚀 배포용 빌드 — 공개 코드에 실제 학생·교수 데이터가 하나도 없습니다.
        명단·계정은 Supabase(서버)에서 로드하거나 슈퍼관리자가 앱에서 출석부(PDF/CSV/붙여넣기)로 등록합니다.
        기본 모드 = remote(서버). 로컬 테스트는 주소 끝에 ?demo=1 (가짜 예시 데이터).
-       ⚠️ Supabase 연결정보(DBCONF)·연동 코드는 프로젝트 생성 후 채웁니다(현재 준비 단계).
+       ✅ Supabase 연동 완료 — 연결정보(DBCONF)·연동 코드가 채워져 로그인·저장이 서버로 동작합니다.
   ============================================================================
 -->
 <style>
@@ -1025,13 +1025,16 @@ function viewProfileCard(sid, self){
   return '<div class="card" id="profileCard"><h2>진로 프로필 카드 — '+esc(st.name)+'</h2>'+
     '<div class="prof-card"><div class="kv">'+rows+'</div></div>'+
     '<p class="muted" style="margin-top:10px">제출 '+r.submitted_at+'</p>'+
-    '<div class="row" style="margin-top:12px">'+
-      '<button class="btn sm" onclick="copyProfile(\''+sid+'\')">📋 복사</button>'+
-      '<button class="btn sm gray" onclick="downloadProfileTxt(\''+sid+'\')">⬇ 텍스트(.txt)</button>'+
-      '<button class="btn sm gray" onclick="downloadProfileDoc(\''+sid+'\')">⬇ 워드(.doc)</button>'+
-      '<button class="btn sm gray" onclick="printProfile(\''+sid+'\')">🖨 PDF(인쇄)</button>'+
-    '</div>'+
-    '<p class="hint" style="margin-top:6px">복사/다운로드하면 항목별로 정돈된 텍스트가 됩니다 (진로지도 사이트에 붙여넣기 좋게).</p>'+
+    /* 복사·다운로드·인쇄 버튼은 교수(학생 열람) 화면에서만. 학생 본인(self)에게는 숨김 */
+    (!self ?
+      '<div class="row" style="margin-top:12px">'+
+        '<button class="btn sm" onclick="copyProfile(\''+sid+'\')">📋 복사</button>'+
+        '<button class="btn sm gray" onclick="downloadProfileTxt(\''+sid+'\')">⬇ 텍스트(.txt)</button>'+
+        '<button class="btn sm gray" onclick="downloadProfileDoc(\''+sid+'\')">⬇ 워드(.doc)</button>'+
+        '<button class="btn sm gray" onclick="printProfile(\''+sid+'\')">🖨 PDF(인쇄)</button>'+
+      '</div>'+
+      '<p class="hint" style="margin-top:6px">복사/다운로드하면 항목별로 정돈된 텍스트가 됩니다 (진로지도 사이트에 붙여넣기 좋게).</p>'
+    : '')+
     (self?'<div class="row" style="margin-top:10px"><button class="btn gray" onclick="go(\'survey\')">응답 수정</button></div>':
           '<div class="row" style="margin-top:10px"><button class="btn gray" onclick="go(\'groups\')">← 트랙 그룹</button></div>')+
   '</div>';
