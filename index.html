@@ -1,0 +1,1430 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>바이오취업역량개발 — 진로설문·진로지도</title>
+<!--
+  ============================================================================
+  『바이오취업역량개발』 진로설문·진로지도 웹앱 — 로컬 시제품 뼈대 (v0.1)
+  ----------------------------------------------------------------------------
+  · PBL 앱(dmu-bio/pbl) 구조 재활용: 무비번 명단대조 로그인 + 표=jsonb 저장.
+  · 이 시제품은 mode='local' — 브라우저(localStorage)에만 저장합니다.
+    서버(Supabase)에는 한 줄도 쓰지 않습니다. 시연·검토용입니다.
+  · 🚀 배포용 빌드 — 공개 코드에 실제 학생·교수 데이터가 하나도 없습니다.
+       명단·계정은 Supabase(서버)에서 로드하거나 슈퍼관리자가 앱에서 출석부(PDF/CSV/붙여넣기)로 등록합니다.
+       기본 모드 = remote(서버). 로컬 테스트는 주소 끝에 ?demo=1 (가짜 예시 데이터).
+       ⚠️ Supabase 연결정보(DBCONF)·연동 코드는 프로젝트 생성 후 채웁니다(현재 준비 단계).
+  ============================================================================
+-->
+<style>
+  :root{ --bg:#f4f6f9; --card:#fff; --ink:#1a2230; --sub:#5b6675; --line:#dde3ea;
+         --blue:#1f6feb; --blueD:#1552b8; --ok:#1a8f4a; --warn:#c9761a; --bad:#c23a3a;
+         --jobs:#1f6feb; --trans:#7a3fd6; --start:#1a8f4a; --pend:#c9761a; --none:#8a94a2; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:'Malgun Gothic','맑은 고딕',system-ui,sans-serif;font-size:15px;line-height:1.5}
+  .wrap{max-width:920px;margin:0 auto;padding:14px}
+  .top{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);
+       border-radius:12px;padding:10px 14px;margin-bottom:12px}
+  .top .ttl{font-weight:800;font-size:16px}
+  .top .sp{flex:1}
+  .top .sub{color:var(--sub);font-size:13px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px}
+  h2{font-size:17px;margin:2px 0 12px}
+  h3{font-size:15px;margin:16px 0 8px;color:var(--ink)}
+  label{display:block;font-weight:700;margin:14px 0 6px}
+  .q{margin:10px 0 4px;font-weight:700}
+  .hint{color:var(--sub);font-size:13px;font-weight:400}
+  input[type=text],input[type=number],textarea,select{
+    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:15px;font-family:inherit}
+  textarea{min-height:64px;resize:vertical}
+  .opt{display:inline-flex;align-items:center;gap:6px;margin:4px 10px 4px 0;font-weight:400;cursor:pointer}
+  .opt input{width:auto}
+  .btn{display:inline-block;background:var(--blue);color:#fff;border:none;border-radius:8px;
+       padding:10px 16px;font-size:15px;font-weight:700;cursor:pointer}
+  .btn:hover{background:var(--blueD)}
+  .btn.sm{padding:6px 11px;font-size:13px}
+  .btn.gray{background:#e8edf3;color:var(--ink)}
+  .btn.gray:hover{background:#dce3ec}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .seg button{background:#eef2f7;border:1px solid var(--line);padding:8px 14px;cursor:pointer;font-weight:700}
+  .seg button:first-child{border-radius:8px 0 0 8px}
+  .seg button:last-child{border-radius:0 8px 8px 0;border-left:none}
+  .seg button.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+  .clsseg{display:inline-flex;margin-right:10px}
+  .clsseg button{background:#eef2f7;border:1px solid var(--line);padding:5px 11px;cursor:pointer;font-weight:700;font-size:12.5px}
+  .clsseg button:first-child{border-radius:7px 0 0 7px}
+  .clsseg button:last-child{border-radius:0 7px 7px 0;border-left:none}
+  .clsseg button.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+  .subnav{display:flex;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px;margin-bottom:12px}
+  .subnav button{flex:0 0 auto;background:#eef2f7;border:1px solid var(--line);border-radius:7px;padding:7px 16px;cursor:pointer;font-weight:700;font-size:14px}
+  .subnav button.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+  /* 활동 허브 */
+  .acts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:14px}
+  .actbtn{border:1px solid var(--line);border-radius:12px;padding:16px 14px;text-align:center;background:var(--card);cursor:pointer;position:relative}
+  .actbtn.on{border-color:var(--blue);border-width:2px}
+  .actbtn.on:hover{background:#f2f7ff}
+  .actbtn.locked{background:#f1f3f6;color:var(--sub);cursor:not-allowed}
+  .actbtn .an{font-size:13px;color:var(--sub);font-weight:700}
+  .actbtn .at{font-size:15px;font-weight:800;margin-top:4px}
+  .actbtn .as{font-size:12px;margin-top:8px}
+  .actbtn .lock{font-size:20px;margin-top:6px;opacity:.6}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700;color:#fff}
+  .t-jobs{background:var(--jobs)} .t-trans{background:var(--trans)} .t-start{background:var(--start)}
+  .t-pend{background:var(--pend)} .t-none{background:var(--none)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left}
+  th{color:var(--sub);font-weight:700}
+  .bar{height:16px;border-radius:4px;background:var(--blue);min-width:2px}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#222c3a;color:#fff;
+         padding:10px 16px;border-radius:8px;font-size:14px;opacity:0;transition:.2s;pointer-events:none;z-index:9}
+  .toast.on{opacity:1}
+  .note{background:#eef4ff;border:1px solid #cfe0ff;border-radius:8px;padding:10px 12px;color:#234;font-size:13px}
+  .muted{color:var(--sub);font-size:13px}
+  .prof-card{border:1px solid var(--line);border-radius:10px;padding:14px;background:#fafcff}
+  .kv{display:grid;grid-template-columns:120px 1fr;gap:4px 10px;margin-top:6px}
+  .kv .k{color:var(--sub);font-weight:700}
+  .demoflag{background:#fff6e6;border:1px solid #f0d79a;border-radius:8px;padding:8px 12px;font-size:12px;color:#7a5a10;margin-bottom:12px}
+  /* 설문 위저드 */
+  .wizard-head{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+  .wstep{flex:1;min-width:64px;text-align:center;padding:8px 4px;border-radius:8px;background:#eef2f7;
+         color:var(--sub);font-size:12.5px;font-weight:700;border:1px solid var(--line)}
+  .wstep.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+  .wstep.done{background:#e3f0ff;color:var(--blueD);border-color:#cfe0ff}
+  .wprog{color:var(--sub);font-size:13px;margin:2px 0 6px}
+  .stephead{font-size:17px;font-weight:800;margin:8px 0 2px}
+  .qcard{border:1px solid var(--line);border-left:4px solid var(--blue);border-radius:10px;
+         background:#fafcff;padding:14px 16px;margin:16px 0}
+  .qhead{font-weight:700;margin-bottom:10px;display:flex;align-items:flex-start;gap:8px;line-height:1.45}
+  .qbadge{display:inline-block;background:var(--blue);color:#fff;border-radius:6px;padding:2px 9px;
+          font-size:12px;font-weight:800;flex:none;margin-top:1px}
+  .navrow{display:flex;justify-content:space-between;align-items:center;margin-top:20px;
+          border-top:1px solid var(--line);padding-top:14px}
+  .qcard.invalid{border-color:var(--bad);border-left-color:var(--bad);background:#fff5f5}
+  .qcard.invalid .qbadge{background:var(--bad)}
+  .qerr{color:var(--bad);font-size:12.5px;font-weight:700;margin-top:9px}
+  .validbanner{background:#fdecea;border:1px solid #f3b7b0;color:#a12820;border-radius:8px;
+               padding:10px 13px;font-size:13.5px;font-weight:700;margin:12px 0}
+  .reqmark{color:var(--bad);font-weight:800;margin-left:3px}
+  @media(max-width:560px){ .wstep{font-size:11px;min-width:0;padding:7px 2px} .wrap{padding:10px} }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================================
+   0. 설정 — local 모드(브라우저 저장). 운영본은 여기서 Supabase remote 로 바꿉니다.
+   ========================================================================== */
+/* 기본 remote(배포). 주소 끝에 ?demo=1 을 붙이면 local(가짜 예시 데이터)로 테스트. */
+var MODE = /[?&]demo=1/.test(location.search) ? 'local' : 'remote';
+/* Supabase 연결정보 — anon 키는 공개돼도 되는 값(RLS로 학생 개인정보는 보호됨).
+   민감 데이터는 Edge Function(api, service_role)을 통해서만 접근한다. */
+var DBCONF = {
+  url:'https://nasizwclypmaojvwfxnn.supabase.co',
+  anon:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hc2l6d2NseXBtYW9qdndmeG5uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwMjI4NzcsImV4cCI6MjEwMzU5ODg3N30.216EMXLF9BFXsxNraDuIV8_HaBMpulua8Pklyz9tMy4'
+};
+var APP_TITLE = '바이오취업역량개발';
+
+/* ── 반(강좌) 정의 — 반별 담당 교수 ── */
+/* 배포 빌드 — 담당 교수명은 공개 코드에 두지 않습니다(서버 accounts/classes에서 로드). */
+var CLASSES = [
+  { id:'F1', prof:'' },
+  { id:'F2', prof:'' },
+  { id:'F3', prof:'' }
+];
+/* 🚀 배포 빌드 — 공개 코드에 실제 교수 계정을 두지 않습니다.
+   교수 계정은 Supabase accounts 표에서 확인(edge_login). 기본은 비어 있습니다. */
+var SEED_PROFS = [];
+/* 로컬 테스트(?demo=1)용 예시 계정·명단 — 실명 아님(가짜). remote 모드에서는 쓰이지 않음. */
+var DEMO_SEED = {
+  profs: [
+    { name:'예시교수A', num:'T0001', klass:'F2', role:'super' },
+    { name:'예시교수B', num:'T0002', klass:'F1', role:'admin' },
+    { name:'예시교수C', num:'T0003', klass:'F3', role:'admin' }
+  ],
+  roster: (function(){ var a=[], plan=[['F2',8],['F1',6],['F3',6]], i=0;
+    plan.forEach(function(p){ for(var k=0;k<p[1];k++){ i++; a.push({ name:'예시학생'+(i<10?'0'+i:i), no:'9000'+(i<10?'0'+i:i)+'00', klass:p[0] }); } });
+    return a; })()
+};
+var PROFS = SEED_PROFS;   /* 로그인 대조용 계정 — local(?demo=1)이면 시작 시 DEMO_SEED.profs 로 교체 */
+
+/* ── 활동 목록 — 나중에 활동을 쉽게 추가/활성화하도록 배열로 관리 ──
+   1차만 실제 화면(진로설문)과 연결·활성. 2~10차는 이름만, 비활성(준비 중). */
+var ACTIVITIES = [
+  { n:1, name:'진로 설문', key:'survey', active:true },
+  { n:2, name:'2차 활동', active:false },
+  { n:3, name:'3차 활동', active:false },
+  { n:4, name:'4차 활동', active:false },
+  { n:5, name:'5차 활동', active:false },
+  { n:6, name:'6차 활동', active:false },
+  { n:7, name:'7차 활동', active:false },
+  { n:8, name:'8차 활동', active:false },
+  { n:9, name:'9차 활동', active:false },
+  { n:10, name:'10차 활동', active:false }
+];
+
+/* ============================================================================
+   개인정보 수집·이용 동의 문구 (초안)
+   ⚠️⚠️ 초안입니다 — 배포 전 반드시 학교 개인정보 심의를 받은 정식 문구로 교체할 것.
+        특히 「보유·이용 기간(3항)」은 학교 규정 미확인 상태의 임시값(placeholder)입니다.
+   ========================================================================== */
+var CONSENT_HTML =
+  '<p><b>「바이오취업역량개발」 교과목 진로지도</b>를 위해 아래와 같이 개인정보를 수집·이용합니다.</p>'+
+  '<p><b>1. 수집 항목</b><br>성명, 학번, 진로설문 응답(희망 진로유형·분야·직무·근무지역·희망연봉·보유/준비 자격증·어학, 편입 정보[유형·연계대학·희망학과], 창업 정보[분야·아이템·준비단계], 대학원 진학 희망, 진로 준비도 및 주관식 응답 등)</p>'+
+  '<p><b>2. 수집·이용 목적</b><br>「바이오취업역량개발」 교과목의 진로지도·상담 및 반·학과 단위 진로 현황 분석</p>'+
+  '<p><b>3. 보유·이용 기간</b><br>수집일로부터 졸업 시까지</p>'+
+  '<p><b>4. 제3자 제공</b><br>없음 (학과 진로지도 목적의 내부 활용에 한함)</p>'+
+  '<p><b>5. 동의 거부 권리 및 불이익</b><br>귀하는 위 개인정보 수집·이용에 동의하지 않을 권리가 있습니다. 다만 동의하지 않을 경우 본 앱을 통한 진로설문·진로지도 활동 참여가 제한될 수 있습니다.</p>';
+
+/* 🚀 배포 빌드 — 학생 명단은 공개 코드에 없습니다.
+   remote: Supabase students 표에서 로드(또는 슈퍼관리자가 앱에서 출석부 등록).
+   local(?demo=1): DEMO_SEED.roster(가짜)로 시드. */
+var SEED_ROSTER = [];
+function profOfClass(c){ var x=CLASSES.filter(function(k){return k.id===c;})[0]; return x?x.prof:''; }
+function classLabel(c){ if(c==='ALL') return '전체'; var p=profOfClass(c); return p? c+'('+p+')' : c; }
+
+/* ============================================================================
+   1. 저장 계층 — PBL의 DB 추상화를 축약. 표이름→줄목록. local=localStorage.
+   ========================================================================== */
+var LSKEY='biocareer_deploy_v1';  /* 배포 빌드 로컬 테스트 저장키 */
+var DB = {
+  d:{ students:[], responses:[], interviews:[] },
+  load:function(){ try{ var r=localStorage.getItem(LSKEY); if(r) this.d=JSON.parse(r); }catch(e){} },
+  save:function(){ try{ localStorage.setItem(LSKEY, JSON.stringify(this.d)); }catch(e){} },
+  seed:function(){
+    if(this.d.students.length) return;
+    if(MODE!=='local') return;                 /* remote: 서버(Supabase)에서 로드 — 별도 연동 예정 */
+    var roster = (typeof DEMO_SEED!=='undefined') ? DEMO_SEED.roster : SEED_ROSTER;
+    this.d.students = roster.map(function(s,i){
+      return { id:'st'+(i+1), name:s.name, no:s.no, klass:s.klass||'F2' };
+    });
+    this.save();
+  },
+  student:function(name,no){
+    var nm=norm(name);
+    return this.d.students.filter(function(s){ return norm(s.name)===nm && s.no===no; })[0];
+  },
+  response:function(sid){ return this.d.responses.filter(function(r){return r.student_id===sid;})[0]; },
+  saveResponse:function(sid, track, answers){
+    var r=this.response(sid);
+    if(r){ r.track=track; r.answers=answers; r.submitted_at=now(); delete r.demo; }  /* 실제 응답으로 덮으면 demo 플래그 해제 */
+    else this.d.responses.push({ id:'r'+(this.d.responses.length+1), student_id:sid, track:track, answers:answers, submitted_at:now() });
+    this.save();
+  },
+  /* ── 시연용 예시 데이터 (demo:true 플래그) ─────────────────────────────
+     ⚠️ 실제 배포 단계에서는 아래 fillDemo/clearDemo 와 대시보드의 시연 버튼을
+        반드시 숨기거나 제거할 것 (운영 중 교수가 실수로 누르지 않도록). */
+  fillDemo:function(){
+    this.clearDemo();                          /* 기존 예시만 지우고(실제 응답은 보존) 다시 채움 */
+    var self=this, i=0;
+    this.d.students.forEach(function(s){
+      if(s.earlyEmployed) return;              /* 조기취업자는 설문 면제 → 예시도 생성 안 함 */
+      if(self.response(s.id)) return;          /* 실제 응답이 있는 학생은 건드리지 않음 */
+      var g=makeDemoAnswers();
+      self.d.responses.push({ id:'d'+(++i)+'_'+s.id, student_id:s.id, track:g.track, answers:g.answers, submitted_at:now(), demo:true });
+    });
+    this.save();
+  },
+  clearDemo:function(){                          /* 예시(demo:true)만 삭제 — 실제 응답은 남김 */
+    this.d.responses = this.d.responses.filter(function(r){ return !r.demo; });
+    this.save();
+  },
+  demoCount:function(){ return this.d.responses.filter(function(r){return r.demo;}).length; }
+};
+
+/* ── 분기 로직을 지킨 그럴듯한 무작위 응답 1건 생성 ── */
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function pickN(arr,min,max){ var n=min+Math.floor(Math.random()*(max-min+1)); var c=arr.slice(); var out=[]; while(out.length<n&&c.length){ out.push(c.splice(Math.floor(Math.random()*c.length),1)[0]); } return out; }
+function optOf(id){ var q=Q.filter(function(x){return x.id===id;})[0]; return q?q.opt:[]; }
+function makeDemoAnswers(){
+  var a={};
+  /* A1: 트랙 분포가 골고루 섞이게 가중 */
+  var A1 = pick(['취업','취업','취업','편입','편입','창업','병행','미정']);
+  a.A1=A1;
+  if(A1==='병행'){ a.A2=pickN(['취업','편입','창업'],2,3); a.A3=pick(['취업','편입','창업','아직 반반']); }
+  a.A4 = 1+Math.floor(Math.random()*5);
+  if(A1==='미정') a.A5=pick(optOf('A5'));
+  function fillTrackB(){
+    a.B1=pickN(optOf('B1').filter(x=>x!=='기타'),1,3);
+    a.B2=pickN(optOf('B2').filter(x=>x!=='기타'),1,2);
+    a.B3=pickN(['서울','인천','경기','충청','강원','영남','호남','제주','상관없음'],1,3);
+    a.B4=pickN(['없음','서울','인천','경기','충청','강원','영남','호남','제주'],1,2);
+    a.B5=pick(optOf('B5')); a.B6=pickN(optOf('B6'),1,3);
+    a.B7 = Math.random()<0.5 ? pick(['셀트리온','비티젠','한국콜마','녹십자','']) : '';
+    a.B8=pickN(optOf('B8').filter(x=>x!=='기타'),1,2);
+    a.B9 = pick(['없음','화학분석기능사','위험물산업기사','컴퓨터활용능력 1급']);
+    a.B10=pick(optOf('B10')); if(a.B10==='보유(점수 입력)') a.B10a='TOEIC '+(600+Math.floor(Math.random()*35)*10);
+    a.B11=pick(optOf('B11')); if(a.B11==='있음') a.B11a=pick(['비티젠 현장실습 2개월 QC','제약회사 인턴 1개월']);
+  }
+  function fillTrackC(){
+    a.C1=pick(optOf('C1'));
+    if(a.C1==='연계편입') a.C1a=pick(optOf('C1a'));
+    if(a.C1==='학사편입') a.C2=pick(optOf('C2'));
+    a.C3=pick(optOf('C3')); a.C4=pick(['생명공학과','화학공학과','식품생명공학과','바이오의약학과']);
+    a.C5=pick(['강원대학교','고려대 세종','건국대 글로컬','서울권 대학']);
+    a.C6=pick(optOf('C6')); a.C7=pickN(optOf('C7'),1,2);
+    a.C8=pick(optOf('C8')); if(a.C8==='보유(점수 입력)') a.C8a='TOEIC '+(600+Math.floor(Math.random()*30)*10);
+  }
+  function fillTrackF(){
+    a.F1=pick(optOf('F1')); a.F2=pickN(optOf('F2').filter(x=>x!=='기타'),1,3);
+    a.F3 = Math.random()<0.5 ? pick(['천연물 화장품','반려동물 건강식품','바이오 진단키트','']) : '';
+    a.F4=pick(optOf('F4')); a.F5=pickN(optOf('F5').filter(x=>x!=='기타'),1,3);
+    a.F6=pick(optOf('F6')); a.F7=pickN(optOf('F7'),1,2);
+    a.F8=pick(optOf('F8')); if(a.F8==='있음') a.F8a=pick(['교내 창업동아리 활동','창업경진대회 참가']);
+  }
+  if(hasTrack(a,'취업')) fillTrackB();
+  if(hasTrack(a,'편입')) fillTrackC();
+  if(hasTrack(a,'창업')) fillTrackF();
+  /* D 대학원(전원) */
+  a.D1=pick(['희망','미정','비희망']);
+  if(a.D1==='희망'){ a.D2=pick(['미생물학','생명공학','식품공학','분자생물학']); a.D3=pick(optOf('D3')); a.D4=pick(optOf('D4')); }
+  /* E 마무리(전원) */
+  a.E1 = 1+Math.floor(Math.random()*5);
+  a.E2 = pick(['진로 방향이 아직 확실하지 않아요','자격증 준비가 부족합니다','서류 작성이 막막해요','학점을 더 올리고 싶어요']);
+  a.E3 = pickN(optOf('E3').filter(x=>x!=='기타'),1,3);
+  return { track:A1, answers:a };
+}
+
+/* ============================================================================
+   2-B. 조기 취업자 관리 (정식 기능 — 로컬·배포 공통)
+     이미 취업한 학생은 설문을 면제하고 통계에서 제외한다. 되돌릴 수 있다.
+   ========================================================================== */
+function setEarly(sid, on, company, memo){
+  var st=DB.d.students.filter(function(x){return x.id===sid;})[0];
+  if(!st) return;
+  if(on!==undefined) st.earlyEmployed=!!on;        /* on 이 undefined면 체크 상태는 건드리지 않음(메모만 저장) */
+  if(company!==undefined) st.earlyCompany=company;
+  if(memo!==undefined) st.earlyMemo=memo;
+  DB.save();
+}
+function isEarly(st){ return !!(st && st.earlyEmployed); }
+/* 현재 보고 있는 반 — 학생=자기 반 / 교수(슈퍼·관리자 모두)=선택한 반(기본 전체 열람) */
+function viewClass(){
+  if(SESS.role==='student') return SESS.student? SESS.student.klass : 'ALL';
+  return SESS.classView||'ALL';   /* 교수 3명 모두 F1/F2/F3/전체 열람 가능 */
+}
+function inView(st){ var c=viewClass(); return c==='ALL' || st.klass===c; }
+function isSuper(){ return !!(SESS.prof && SESS.prof.role==='super'); }
+/* 데이터 수정(조기취업 체크·출석부 등록) 권한 — 슈퍼관리자는 전 반, 관리자는 본인 반만 */
+function canManage(st){ if(SESS.role!=='prof') return false; if(isSuper()) return true; return st && st.klass===(SESS.prof&&SESS.prof.klass); }
+/* 개인정보 동의 상태 (학생별 저장) */
+function hasConsent(st){ return !!(st && st.consent && st.consent.agreed); }
+function setConsent(sid){ var st=DB.d.students.filter(function(x){return x.id===sid;})[0]; if(st){ st.consent={agreed:true, at:now()}; DB.save(); } }
+
+/* ============================================================================
+   명단 관리 (슈퍼관리자 전용) — 출석부 등록 / 학생 추가·수정·삭제
+   ⚠️ 데이터 변경 함수는 슈퍼관리자만 호출(UI 게이트 + 아래 가드).
+   ========================================================================== */
+function rval(id){ var e=document.getElementById(id); return e? (''+e.value).trim() : ''; }
+function classOptions(sel){ return CLASSES.map(function(c){ return '<option value="'+c.id+'"'+(c.id===sel?' selected':'')+'>'+c.id+'</option>'; }).join(''); }
+function newSid(){ return 'st_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function addStudent(name,no,klass){
+  if(!isSuper()) return {ok:false,msg:'슈퍼관리자만 가능합니다.'};
+  name=(name||'').trim(); no=(no||'').trim();
+  if(!name||!no) return {ok:false,msg:'이름과 학번을 입력하세요.'};
+  if(DB.d.students.some(function(s){return s.no===no;})) return {ok:false,msg:'이미 있는 학번입니다: '+no};
+  DB.d.students.push({id:newSid(), name:name, no:no, klass:klass||'F1'}); DB.save(); return {ok:true};
+}
+function updateStudent(sid,name,no,klass){
+  if(!isSuper()) return {ok:false,msg:'슈퍼관리자만 가능합니다.'};
+  var st=DB.d.students.filter(function(x){return x.id===sid;})[0]; if(!st) return {ok:false,msg:'학생을 찾을 수 없습니다.'};
+  name=(name||'').trim(); no=(no||'').trim();
+  if(!name||!no) return {ok:false,msg:'이름과 학번을 입력하세요.'};
+  if(DB.d.students.some(function(s){return s.no===no && s.id!==sid;})) return {ok:false,msg:'다른 학생과 학번이 겹칩니다: '+no};
+  st.name=name; st.no=no; if(klass) st.klass=klass; DB.save(); return {ok:true};
+}
+function deleteStudent(sid){
+  if(!isSuper()) return;
+  DB.d.students = DB.d.students.filter(function(x){return x.id!==sid;});
+  DB.d.responses = DB.d.responses.filter(function(r){return r.student_id!==sid;});
+  DB.save();
+}
+function registerRoster(klass,list,mode){
+  if(!isSuper()) return 0;
+  if(mode==='overwrite'){
+    var ids={}; DB.d.students.filter(function(s){return s.klass===klass;}).forEach(function(s){ids[s.id]=1;});
+    DB.d.students = DB.d.students.filter(function(s){return s.klass!==klass;});
+    DB.d.responses = DB.d.responses.filter(function(r){return !ids[r.student_id];});
+  }
+  var added=0;
+  list.forEach(function(r){
+    if(!r.name||!r.no) return;
+    if(DB.d.students.some(function(s){return s.no===r.no;})) return;   /* 학번 중복 방지(전 반) */
+    DB.d.students.push({id:newSid(), name:r.name, no:r.no, klass:klass}); added++;
+  });
+  DB.save(); return added;
+}
+/* 붙여넣기/PDF 텍스트 → [{name,no}] — 「학번 이름」·「이름 학번」 두 순서 다 지원 */
+function parseRoster(text){
+  function grab(re,noFirst){ var o=[],m; re.lastIndex=0; while((m=re.exec(text))){ o.push({name:noFirst?m[2]:m[1], no:noFirst?m[1]:m[2]}); } return o; }
+  var a=grab(/(20\d{6})\s+([가-힣]{2,5})/g,true);       /* 학번 다음 이름 (출석부 PDF 순서) */
+  var b=grab(/([가-힣]{2,5})\s+(20\d{6})/g,false);      /* 이름 다음 학번 (붙여넣기 흔한 순서) */
+  var list=(a.length>=b.length)?a:b;
+  var seen={}; return list.filter(function(r){ if(seen[r.no])return false; seen[r.no]=1; return true; });
+}
+/* PDF.js 지연 로드(사용할 때만, CDN) — 실패 시 붙여넣기/CSV 안내 */
+function loadPdfJs(cb){
+  if(window.pdfjsLib){ cb(true); return; }
+  var s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+  s.onload=function(){ try{ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js'; }catch(e){} cb(true); };
+  s.onerror=function(){ cb(false); };
+  document.head.appendChild(s);
+}
+function extractPdf(file,done){
+  loadPdfJs(function(ok){
+    if(!ok){ done(null); return; }
+    var fr=new FileReader();
+    fr.onload=function(){
+      pdfjsLib.getDocument({data:new Uint8Array(fr.result)}).promise.then(function(pdf){
+        var texts=[], chain=Promise.resolve();
+        for(var i=1;i<=pdf.numPages;i++){ (function(n){ chain=chain.then(function(){ return pdf.getPage(n).then(function(pg){return pg.getTextContent();}).then(function(tc){ texts.push(tc.items.map(function(it){return it.str;}).join(' ')); }); }); })(i); }
+        chain.then(function(){ done(texts.join('\n')); });
+      }).catch(function(){ done(null); });
+    };
+    fr.readAsArrayBuffer(file);
+  });
+}
+/* 화면 상태 + 핸들러 */
+var regState={ open:false, rows:[] };
+var addOpen=false, editSid=null;
+function toggleAddForm(){ if(!isSuper())return; addOpen=!addOpen; render(); }
+function submitAddStudent(){
+  if(!isSuper()){ toast('슈퍼관리자만 가능합니다.'); return; }
+  var nm=rval('addName'), no=rval('addNo'), kl=rval('addKlass')||'F1';
+  if(!nm||!no){ toast('이름과 학번을 입력하세요.'); return; }
+  if(MODE==='remote'){ addOpen=false; render(); remoteWrite('addStudent',{name:nm,no:no,klass:kl}, '학생을 추가했습니다.'); return; }
+  var r=addStudent(nm, no, kl);
+  if(!r.ok){ toast(r.msg||'추가 실패'); return; }
+  addOpen=false; toast('학생을 추가했습니다.'); render();
+}
+function startEdit(sid){ if(!isSuper())return; editSid=sid; render(); }
+function cancelEdit(){ editSid=null; render(); }
+function saveEdit(sid){
+  var nm=rval('edName_'+sid), no=rval('edNo_'+sid), kl=rval('edKlass_'+sid);
+  if(MODE==='remote'){ editSid=null; render(); remoteWrite('updateStudent',{sid:sid,name:nm,no:no,klass:kl}, '수정했습니다.'); return; }
+  var r=updateStudent(sid, nm, no, kl);
+  if(!r.ok){ toast(r.msg||'수정 실패'); return; }
+  editSid=null; toast('수정했습니다.'); render();
+}
+function confirmDeleteStudent(sid){
+  if(!isSuper())return;
+  var st=DB.d.students.filter(function(x){return x.id===sid;})[0]; if(!st) return;
+  if(confirm(st.name+' 학생을 명단에서 삭제할까요?\n이 학생의 설문 응답도 함께 사라집니다. (되돌릴 수 없습니다)')){
+    if(MODE==='remote'){ remoteWrite('deleteStudent',{sid:sid}, '삭제했습니다.'); return; }
+    deleteStudent(sid); toast('삭제했습니다.'); render();
+  }
+}
+function toggleReg(){ if(!isSuper())return; regState.open=!regState.open; render(); }
+function regLoadPaste(){
+  var list=parseRoster(rval('regPaste'));
+  if(!list.length){ toast('이름·학번을 찾지 못했습니다. 「이름  학번」 형식으로 붙여넣어 주세요.'); return; }
+  regState.rows=list; render();
+}
+function regPickFile(input){
+  var f=input.files&&input.files[0]; if(!f) return;
+  var nm=(f.name||'').toLowerCase();
+  if(nm.slice(-4)==='.pdf'){
+    toast('PDF에서 명단을 읽는 중…');
+    extractPdf(f,function(text){
+      if(text==null){ toast('PDF 자동 추출 실패(인터넷 필요/형식). 붙여넣기나 CSV로 등록하세요.'); return; }
+      var list=parseRoster(text);
+      if(!list.length){ toast('PDF에서 이름·학번을 찾지 못했습니다. 붙여넣기로 등록하세요.'); return; }
+      regState.rows=list; toast(list.length+'명을 읽었습니다. 미리보기를 확인하세요.'); render();
+    });
+  } else {
+    var fr=new FileReader();
+    fr.onload=function(){ var list=parseRoster(fr.result||''); if(!list.length){ toast('파일에서 이름·학번을 찾지 못했습니다.'); return; } regState.rows=list; toast(list.length+'명을 읽었습니다.'); render(); };
+    fr.readAsText(f,'utf-8');
+  }
+}
+function regEditRow(i,field,v){ if(regState.rows[i]) regState.rows[i][field]=v; }   /* 재렌더 안 함(포커스 유지) */
+function regDelRow(i){ regState.rows.splice(i,1); render(); }
+function regSubmit(){
+  if(!regState.rows.length){ toast('불러온 명단이 없습니다.'); return; }
+  var kl=rval('regKlass')||'F1';
+  var mode=(document.querySelector('input[name=regMode]:checked')||{}).value||'append';
+  if(mode==='overwrite'){
+    var existing=DB.d.students.filter(function(s){return s.klass===kl;}).length;
+    if(existing && !confirm(kl+'반 기존 '+existing+'명(및 그 응답)을 지우고 새로 등록할까요? (되돌릴 수 없습니다)')) return;
+  }
+  var list=regState.rows.slice();
+  if(MODE==='remote'){ regState.rows=[]; regState.open=false; render(); remoteWrite('registerRoster',{klass:kl, list:list, mode:mode}, kl+'반 명단을 등록했습니다.'); return; }
+  var n=registerRoster(kl, list, mode);
+  regState.rows=[]; regState.open=false; toast(kl+'반에 '+n+'명 등록했습니다.'); render();
+}
+function viewStudents(){ return DB.d.students.filter(inView); }              /* 현재 반의 학생 */
+function surveyStudents(){ return viewStudents().filter(function(s){ return !isEarly(s); }); }  /* 설문 대상 */
+function earlyStudents(){ return viewStudents().filter(isEarly); }
+/* 통계용 응답 — 현재 반 + 조기취업자 제외 */
+function statResponses(){
+  var ok={}; viewStudents().forEach(function(s){ if(!isEarly(s)) ok[s.id]=1; });
+  return DB.d.responses.filter(function(r){ return ok[r.student_id]; });
+}
+
+/* ============================================================================
+   2-C. 설문 응답 원본 → 엑셀(.xlsx) (정식 기능 — 로컬·배포 공통)
+     · 학생 1명 = 1행. 컬럼 = 이름·학번·조기취업여부·취업처·진로트랙(A1) + 각 문항번호.
+     · 복수선택은 쉼표로, 조건부 미해당(숨김) 문항은 빈칸, 미제출은 빈칸.
+     · PBL 앱(pX_xlsx.js) 방식 재활용 — 외부 라이브러리 없이 순수 JS로 .xlsx 생성.
+   ========================================================================== */
+/* ---- CRC32 ---- */
+var XL_CRCT=null;
+function xlCrcTable(){ if(XL_CRCT) return XL_CRCT; XL_CRCT=new Int32Array(256);
+  for(var n=0;n<256;n++){ var c=n; for(var k=0;k<8;k++) c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); XL_CRCT[n]=c; } return XL_CRCT; }
+function xlCrc32(bytes){ var t=xlCrcTable(), c=0^(-1); for(var i=0;i<bytes.length;i++) c=(c>>>8)^t[(c^bytes[i])&0xFF]; return (c^(-1))>>>0; }
+function xlUtf8(str){ if(typeof TextEncoder!=='undefined') return new TextEncoder().encode(str);
+  var out=[], s=String(str); for(var i=0;i<s.length;i++){ var c=s.charCodeAt(i);
+    if(c<0x80) out.push(c); else if(c<0x800){ out.push(0xC0|(c>>6),0x80|(c&63)); }
+    else if(c>=0xD800&&c<0xDC00&&i+1<s.length){ var c2=s.charCodeAt(++i), u=0x10000+((c-0xD800)<<10)+(c2-0xDC00);
+      out.push(0xF0|(u>>18),0x80|((u>>12)&63),0x80|((u>>6)&63),0x80|(u&63)); }
+    else{ out.push(0xE0|(c>>12),0x80|((c>>6)&63),0x80|(c&63)); } } return new Uint8Array(out); }
+var XL_ENT={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'};
+function xlEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return XL_ENT[c];}).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,''); }
+function xlCol(n){ var s=''; while(n>0){ var r=(n-1)%26; s=String.fromCharCode(65+r)+s; n=Math.floor((n-1)/26); } return s; }
+function xlSheetXml(rows){
+  var wide={}; rows.forEach(function(r){ for(var i=0;i<r.length;i++){ var L=String(r[i]==null?'':r[i]).length; if(!wide[i]||L>wide[i]) wide[i]=L; } });
+  var cols='<cols>'; Object.keys(wide).forEach(function(i){ var w=Math.min(52,Math.max(8,wide[i]*1.35+3));
+    cols+='<col min="'+(Number(i)+1)+'" max="'+(Number(i)+1)+'" width="'+w.toFixed(1)+'" customWidth="1"/>'; }); cols+='</cols>';
+  var body=''; for(var ri=0;ri<rows.length;ri++){ var r=rows[ri], cells='';
+    for(var ci=0;ci<r.length;ci++){ var v=r[ci], ref=xlCol(ci+1)+(ri+1), st=(ri===0?' s="1"':'');
+      if(v===null||v===undefined||v===''){ cells+='<c r="'+ref+'"'+st+'/>'; continue; }
+      if(typeof v==='number'&&isFinite(v)) cells+='<c r="'+ref+'"'+st+'><v>'+v+'</v></c>';
+      else cells+='<c r="'+ref+'"'+st+' t="inlineStr"><is><t xml:space="preserve">'+xlEsc(v)+'</t></is></c>'; }
+    body+='<row r="'+(ri+1)+'">'+cells+'</row>'; }
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
+    '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>'+
+    '<selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews>'+
+    '<sheetFormatPr defaultRowHeight="15"/>'+cols+'<sheetData>'+body+'</sheetData></worksheet>';
+}
+var XL_STYLES='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+ '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
+ '<fonts count="2"><font><sz val="11"/><name val="맑은 고딕"/></font><font><b/><sz val="11"/><name val="맑은 고딕"/></font></fonts>'+
+ '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>'+
+ '<fill><patternFill patternType="solid"><fgColor rgb="FFEEF1F5"/><bgColor indexed="64"/></patternFill></fill></fills>'+
+ '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>'+
+ '<border><left/><right/><top/><bottom style="thin"><color rgb="FF999999"/></bottom><diagonal/></border></borders>'+
+ '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'+
+ '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>'+
+ '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs>'+
+ '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+function xlZip(files){ var chunks=[], central=[], offset=0;
+  function u16(n){ return [n&0xFF,(n>>8)&0xFF]; } function u32(n){ return [n&0xFF,(n>>8)&0xFF,(n>>16)&0xFF,(n>>24)&0xFF]; }
+  var TIME=0, DATE=(1<<5)|1;
+  files.forEach(function(f){ var nm=xlUtf8(f.name), crc=xlCrc32(f.data), sz=f.data.length;
+    var head=[].concat([0x50,0x4B,0x03,0x04],u16(20),u16(0x0800),u16(0),u16(TIME),u16(DATE),u32(crc),u32(sz),u32(sz),u16(nm.length),u16(0));
+    chunks.push(new Uint8Array(head),nm,f.data); central.push({nm:nm,crc:crc,sz:sz,off:offset}); offset+=head.length+nm.length+sz; });
+  var cdStart=offset, cd=[];
+  central.forEach(function(c){ var h=[].concat([0x50,0x4B,0x01,0x02],u16(20),u16(20),u16(0x0800),u16(0),u16(TIME),u16(DATE),
+    u32(c.crc),u32(c.sz),u32(c.sz),u16(c.nm.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(c.off));
+    cd.push(new Uint8Array(h),c.nm); offset+=h.length+c.nm.length; });
+  var eocd=new Uint8Array([].concat([0x50,0x4B,0x05,0x06],u16(0),u16(0),u16(central.length),u16(central.length),u32(offset-cdStart),u32(cdStart),u16(0)));
+  var all=chunks.concat(cd,[eocd]), total=0; all.forEach(function(x){ total+=x.length; });
+  var out=new Uint8Array(total), p=0; all.forEach(function(x){ out.set(x,p); p+=x.length; }); return out; }
+function makeXlsx(sheets){ var used={}, bad=/[\[\]\*\?\/\\:]/g;
+  var names=sheets.map(function(s){ var n=String(s.name||'Sheet').replace(bad,'_').slice(0,31)||'Sheet';
+    while(used[n]) n=n.slice(0,29)+'_'+(Object.keys(used).length+1); used[n]=1; return n; });
+  var files=[];
+  var ct='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
+    '<Default Extension="xml" ContentType="application/xml"/>'+
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+
+    sheets.map(function(s,i){ return '<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; }).join('')+
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>';
+  var rels='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+  var wb='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'+
+    names.map(function(n,i){ return '<sheet name="'+xlEsc(n)+'" sheetId="'+(i+1)+'" r:id="rId'+(i+1)+'"/>'; }).join('')+'</sheets></workbook>';
+  var wbr='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+    sheets.map(function(s,i){ return '<Relationship Id="rId'+(i+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>'; }).join('')+
+    '<Relationship Id="rId'+(sheets.length+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
+  files.push({name:'[Content_Types].xml', data:xlUtf8(ct)});
+  files.push({name:'_rels/.rels', data:xlUtf8(rels)});
+  files.push({name:'xl/workbook.xml', data:xlUtf8(wb)});
+  files.push({name:'xl/_rels/workbook.xml.rels', data:xlUtf8(wbr)});
+  files.push({name:'xl/styles.xml', data:xlUtf8(XL_STYLES)});
+  sheets.forEach(function(s,i){ files.push({name:'xl/worksheets/sheet'+(i+1)+'.xml', data:xlUtf8(xlSheetXml(s.rows||[[]]))}); });
+  return xlZip(files);
+}
+function downloadXlsx(name, sheets){
+  try{ var bytes=makeXlsx(sheets);
+    var b=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    var u=URL.createObjectURL(b), a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(u); a.remove(); },900);
+    toast(name+' 을(를) 내려받았습니다. ('+Math.round(bytes.length/1024)+'KB)'); return bytes.length;
+  }catch(e){ downloadCsv(name.replace(/\.xlsx$/,'.csv'), sheets[0].rows);
+    toast('엑셀 생성이 막혀 CSV로 받았습니다.'); return 0; }
+}
+function downloadCsv(name, rows){                 /* 엑셀 실패 시 대비 — UTF-8 BOM CSV */
+  var csv=rows.map(function(r){ return r.map(function(v){ v=(v==null?'':String(v)); return '"'+v.replace(/"/g,'""')+'"'; }).join(','); }).join('\r\n');
+  var b=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  var u=URL.createObjectURL(b), a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(u); a.remove(); },900);
+}
+/* 학생 1명 = 1행 표 만들기(엑셀 헤더 포함) */
+function surveyRows(){
+  var qids=Q.filter(function(x){ return !x.sec; }).map(function(x){ return x.id; });
+  var header=['반','이름','학번','조기취업여부','취업처','진로트랙(A1)'].concat(qids);
+  var rows=[header];
+  viewStudents().forEach(function(st){
+    var r=DB.response(st.id), a=r?r.answers:{};
+    var line=[st.klass, st.name, st.no, isEarly(st)?'예':'아니오', st.earlyCompany||'', (r&&!isEarly(st))?r.track:''];
+    qids.forEach(function(id){
+      var item=Q.filter(function(x){ return x.id===id; })[0];
+      var visible = !item.show || item.show(a);
+      var v = (r && !isEarly(st) && visible)? a[id] : undefined;
+      if(v===undefined||v===null||v==='') line.push('');
+      else if(Array.isArray(v)) line.push(v.join(', '));
+      else line.push(v);
+    });
+    rows.push(line);
+  });
+  return rows;
+}
+function doExcel(){ var c=viewClass(); downloadXlsx('bio_career_survey_responses_'+(c==='ALL'?'all':c)+'.xlsx', [{name:'응답원본', rows:surveyRows()}]); }
+function norm(s){ return (s||'').replace(/\s+/g,''); }
+function now(){ var d=new Date(); return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate())+' '+p2(d.getHours())+':'+p2(d.getMinutes()); }
+function p2(n){ return n<10?'0'+n:''+n; }
+
+/* ============================================================================
+   2. 설문 문항 정의 — 문항번호가 곧 저장 키(answers[번호]).
+      type: single | multi | scale | text | textarea | num
+      show: 조건부 표시 함수(응답 a 를 받아 boolean)
+   ========================================================================== */
+var TRACK = { '취업':'t-jobs','편입':'t-trans','창업':'t-start','병행':'t-pend','미정':'t-none' };
+function hasTrack(a, t){
+  if(a.A1===t) return true;
+  if(a.A1==='병행' && (a.A2||[]).indexOf(t)>=0) return true;
+  return false;
+}
+var Q = [
+  {sec:'A. 진로 유형'},
+  {id:'A1', q:'졸업 후 가장 우선하는 진로 방향은?', type:'single', opt:['취업','편입','창업','병행','미정']},
+  {id:'A2', q:'(병행 선택 시) 병행할 진로를 모두 고르세요', type:'multi', opt:['취업','편입','창업'], show:function(a){return a.A1==='병행';}},
+  {id:'A3', q:'(병행 선택 시) 가장 중심에 두는 것은?', type:'single', opt:['취업','편입','창업','아직 반반'], show:function(a){return a.A1==='병행';}},
+  {id:'A4', q:'현재 이 방향을 정한 확신 정도는?', type:'scale'},
+  {id:'A5', q:'(미정 선택 시) 아직 못 정한 가장 큰 이유는?', type:'single', opt:['정보 부족','성적 걱정','흥미를 모름','가정·경제 사정','기타'], show:function(a){return a.A1==='미정';}},
+
+  {sec:'B. 취업 트랙', show:function(a){return hasTrack(a,'취업');}},
+  {id:'B1', q:'희망 취업 분야는? (복수)', type:'multi', opt:['제약·바이오','식품','화장품','정밀화학·소재','진단·의료기기','환경·에너지','품질·인증(QC/QA)','연구소','공공기관','기타'], show:function(a){return hasTrack(a,'취업');}},
+  {id:'B2', q:'희망 직무는? (복수)', type:'multi', opt:['생산·공정','품질관리(QC)','품질보증(QA)','연구개발(R&D)','분석·시험','인허가·RA','영업·마케팅','생산관리','기타'], show:function(a){return hasTrack(a,'취업');}},
+  {id:'B3', q:'희망 근무 지역은? (복수)', type:'multi', opt:['서울','인천','경기','충청','강원','영남','호남','제주','상관없음','기타'], show:function(a){return hasTrack(a,'취업');}},
+  {id:'B4', q:'가기 싫은/피하고 싶은 지역은? (복수)', type:'multi', opt:['없음','서울','인천','경기','충청','강원','영남','호남','제주','기타'], show:function(a){return hasTrack(a,'취업');}},
+  {id:'B5', q:'희망 연봉 구간(신입)은?', type:'single', opt:['2,400만 미만','2,400~2,800','2,800~3,200','3,200~3,600','3,600만 이상','모름'], show:function(a){return hasTrack(a,'취업');}},
+  {id:'B6', q:'희망 기업 형태는? (복수)', type:'multi', opt:['대기업','중견','중소','공기업·공공','연구소','스타트업','외국계'], show:function(a){return hasTrack(a,'취업');}},
+  {id:'B7', q:'구체적으로 가고 싶은 기업명 (있으면, 최대 3개·쉼표로)', type:'text', optional:true, show:function(a){return hasTrack(a,'취업');}},
+  {id:'B8', q:'현재 보유한 전공 관련 자격증은? (복수)', type:'multi', opt:['화학분석기능사','바이오화학제품제조 산업기사','위험물기능사','위험물산업기사','바이오공정기능사','위생사','식품산업기사','컴퓨터활용능력 2급','컴퓨터활용능력 1급','없음','기타'], show:function(a){return hasTrack(a,'취업');}},
+  {id:'B9', q:'준비 중인 전공 관련 자격증은? (없으면 없음)', type:'text', reqMsg:'없으면 \'없음\'이라고 적어 주세요.', show:function(a){return hasTrack(a,'취업');}},
+  {id:'B10', q:'어학 성적 보유·준비 현황은?', type:'single', opt:['보유(점수 입력)','준비 중','계획 없음'], show:function(a){return hasTrack(a,'취업');}},
+  {id:'B10a', q:'어학 종류·점수 (예: TOEIC 750)', type:'text', show:function(a){return hasTrack(a,'취업') && a.B10==='보유(점수 입력)';}},
+  {id:'B11', q:'인턴·현장실습 경험이 있는가?', type:'single', opt:['있음','없음'], show:function(a){return hasTrack(a,'취업');}},
+  {id:'B11a', q:'경험 내용 (기관·기간·직무)', type:'textarea', show:function(a){return hasTrack(a,'취업') && a.B11==='있음';}},
+
+  {sec:'C. 편입 트랙', show:function(a){return hasTrack(a,'편입');}},
+  {id:'C1', q:'희망 편입 유형은?', type:'single', opt:['일반편입','연계편입','학사편입'], show:function(a){return hasTrack(a,'편입');}},
+  {id:'C1a', q:'(연계편입 선택 시) 희망하는 연계편입 협약 대학은? (학과는 우리 학과와 협약된 전공)', type:'single', opt:['강원대학교 춘천캠퍼스 (바이오자원환경학전공/생명건강공학과)','건국대학교 글로컬캠퍼스 (바이오의약학과)','홍익대학교 세종캠퍼스 (바이오화학융합공학과)','고려대학교 세종캠퍼스 (식품생명공학과)','연세대학교 미래캠퍼스 (화학및의화학전공)','아직 미정','기타'], show:function(a){return hasTrack(a,'편입') && a.C1==='연계편입';}},
+  {id:'C2', q:'(학사편입 선택 시) 학사학위 취득 방법은?', type:'single', opt:['독학사','학점은행제','방송통신대','야간대학','미정','기타'], show:function(a){return hasTrack(a,'편입') && a.C1==='학사편입';}},
+  {id:'C3', q:'희망 편입 분야(계열)는?', type:'single', opt:['생명·바이오','화학·화공','식품·영양','보건·의료','환경','공학 일반','인문·사회','기타'], show:function(a){return hasTrack(a,'편입');}},
+  {id:'C4', q:'희망 편입 학과(전공)는?', type:'text', show:function(a){return hasTrack(a,'편입');}},
+  {id:'C5', q:'희망 편입 학교 또는 지역은? (최대 3, 쉼표로)', type:'text', show:function(a){return hasTrack(a,'편입');}},
+  {id:'C6', q:'편입 후 최종 목표는?', type:'single', opt:['4년제 학위 취득','전공 심화','연구자 진출','취업 경쟁력','대학원 준비','기타'], show:function(a){return hasTrack(a,'편입');}},
+  {id:'C7', q:'편입 준비 현황은? (복수)', type:'multi', opt:['학점 관리','영어','전공 필기','아직 시작 안 함'], show:function(a){return hasTrack(a,'편입');}},
+  {id:'C8', q:'편입 관련 어학(공인영어) 상태는?', type:'single', opt:['보유(점수 입력)','준비 중','미시작'], show:function(a){return hasTrack(a,'편입');}},
+  {id:'C8a', q:'어학 종류·점수 (예: TOEIC 700)', type:'text', show:function(a){return hasTrack(a,'편입') && a.C8==='보유(점수 입력)';}},
+
+  {sec:'F. 창업 트랙', show:function(a){return hasTrack(a,'창업');}},
+  {id:'F1', q:'창업 준비 단계는?', type:'single', opt:['관심만 있음','막연한 아이디어 있음','구체적 아이템 있음','이미 준비·실행 중'], show:function(a){return hasTrack(a,'창업');}},
+  {id:'F2', q:'관심 창업 분야는? (복수)', type:'multi', opt:['바이오·헬스케어','식품·건강기능','화장품·뷰티','진단·의료기기','환경·친환경','바이오 IT·플랫폼','교육·콘텐츠','유통·커머스','기타'], show:function(a){return hasTrack(a,'창업');}},
+  {id:'F3', q:'구상 중인 아이템이 있다면 간단히 (없으면 비워도 됨)', type:'textarea', optional:true, show:function(a){return hasTrack(a,'창업');}},
+  {id:'F4', q:'창업 형태는?', type:'single', opt:['1인 창업','팀 창업','가업·승계','아직 모름'], show:function(a){return hasTrack(a,'창업');}},
+  {id:'F5', q:'창업에 가장 필요한 지원은? (복수)', type:'multi', opt:['창업 자금','공간·시설','멘토링·컨설팅','기술·특허','팀원·네트워크','시제품 제작','마케팅·판로','기타'], show:function(a){return hasTrack(a,'창업');}},
+  {id:'F6', q:'창업 준비 현황은?', type:'single', opt:['정보 탐색 단계','아이템 구체화 중','팀·자금 준비 중','시제품·테스트 중','아직 없음'], show:function(a){return hasTrack(a,'창업');}},
+  {id:'F7', q:'관심 있는 창업 지원사업·공모전은? (복수)', type:'multi', opt:['예비창업패키지','청년창업사관학교','교내 창업동아리·창업지원단','캠퍼스 CEO','창업경진대회','잘 모름','기타'], show:function(a){return hasTrack(a,'창업');}},
+  {id:'F8', q:'창업 관련 교육·경험이 있는가?', type:'single', opt:['있음','없음'], show:function(a){return hasTrack(a,'창업');}},
+  {id:'F8a', q:'경험 내용 (교육·동아리·대회 등)', type:'textarea', show:function(a){return hasTrack(a,'창업') && a.F8==='있음';}},
+
+  {sec:'D. 대학원 진학 (전원)'},
+  {id:'D1', q:'학사학위 취득 이후 대학원 진학 희망?', type:'single', opt:['희망','미정','비희망']},
+  {id:'D2', q:'희망 대학원 분야는? (예: 미생물학)', type:'text', show:function(a){return a.D1==='희망';}},
+  {id:'D3', q:'희망 학위과정은?', type:'single', opt:['석사','석·박사 통합','모름'], show:function(a){return a.D1==='희망';}},
+  {id:'D4', q:'국내/해외 중 희망은?', type:'single', opt:['국내','해외','상관없음'], show:function(a){return a.D1==='희망';}},
+
+  {sec:'E. 공통 마무리 (전원)'},
+  {id:'E1', q:'현재 나의 진로 준비도 자기평가는?', type:'scale'},
+  {id:'E2', q:'진로 준비에서 가장 큰 고민은?', type:'textarea'},
+  {id:'E3', q:'지금 가장 필요한 도움은? (복수)', type:'multi', opt:['진로 방향 결정','기업/학교/창업 정보','서류 작성','면접·피칭 준비','자격증·어학','학점 관리','기타']}
+];
+
+/* ============================================================================
+   3. 세션·라우팅
+   ========================================================================== */
+var SESS = { role:null, student:null, prof:null, classView:'ALL' };   // role: 'student' | 'prof'
+var VIEW = 'login';
+var loginRole = 'student';
+var draft = {};   // 설문 작성 중 응답
+var stepIdx = 0;  // 설문 위저드 현재 단계(0-based)
+var invalid = {}; // 미응답으로 표시된 문항 id 집합
+var showValidateMsg = false; // 상단 안내 배너 표시 여부
+
+function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('on'); setTimeout(function(){t.classList.remove('on');},1800); }
+function go(v){ if(v==='survey'){ stepIdx=0; invalid={}; showValidateMsg=false; } VIEW=v; render(); window.scrollTo(0,0); }
+
+/* ============================================================================
+   4. 렌더
+   ========================================================================== */
+function render(){
+  var el=document.getElementById('app');
+  if(VIEW==='login'){ el.innerHTML = viewLogin(); return; }
+  var bar = topbar();
+  if(VIEW==='hub'){ el.innerHTML = bar+viewHub(); return; }   /* 로그인 후 첫 화면 = 활동 목록 */
+  if(SESS.role==='student'){
+    if(VIEW==='consent') el.innerHTML = bar+viewConsent();
+    else if(VIEW==='home') el.innerHTML = bar+viewStudentHome();
+    else if(VIEW==='survey') el.innerHTML = bar+viewSurvey();
+    else if(VIEW==='card') el.innerHTML = bar+viewProfileCard(SESS.student.id, true);
+  } else {
+    if(VIEW==='dash') el.innerHTML = bar+viewDash();
+    else if(VIEW==='groups') el.innerHTML = bar+viewGroups();
+    else if(VIEW==='roster') el.innerHTML = bar+viewRoster();
+    else if(VIEW.indexOf('sc:')===0) el.innerHTML = bar+viewProfileCard(VIEW.slice(3), false);
+  }
+}
+
+function topbar(){
+  var right, mid, sel='', subnav='';
+  if(SESS.role==='student'){
+    mid = esc(SESS.student.name)+' · '+SESS.student.klass+'반';
+    right = '<button class="btn sm gray" onclick="go(\'hub\')">활동 목록</button>'+
+            '<button class="btn sm gray" onclick="logout()">로그아웃</button>';
+  } else {
+    var p=SESS.prof||{};
+    mid = '🟢 '+(isSuper()?'슈퍼관리자':'관리자')+' '+esc(p.name)+' · 담당 '+p.klass+'반';
+    right = '<button class="btn sm gray" onclick="go(\'hub\')">활동 목록</button>'+
+            '<button class="btn sm gray" onclick="logout()">로그아웃</button>';
+    /* 반 선택 — 교수 3명 모두 전체 열람 가능 (활동 안에서만 표시) */
+    if(VIEW!=='hub'){
+      /* 반 선택 탭 — 어느 반을 볼지 (상단) */
+      sel = '<div class="clsseg">'+['ALL','F1','F2','F3'].map(function(c){
+        return '<button class="'+(viewClass()===c?'on':'')+'" onclick="setClassView(\''+c+'\')">'+(c==='ALL'?'전체':c)+'</button>';
+      }).join('')+'</div>';
+      /* 하위 화면 탭 — 무엇을 볼지 (대시보드/트랙그룹/명단). 카드(sc:)는 트랙그룹 계열로 표시 */
+      var cur=(VIEW.indexOf('sc:')===0)?'groups':VIEW;
+      subnav = '<div class="subnav">'+
+        '<button class="'+(cur==='dash'?'on':'')+'" onclick="go(\'dash\')">대시보드</button>'+
+        '<button class="'+(cur==='groups'?'on':'')+'" onclick="go(\'groups\')">트랙 그룹</button>'+
+        '<button class="'+(cur==='roster'?'on':'')+'" onclick="go(\'roster\')">명단</button>'+
+      '</div>';
+    }
+  }
+  return '<div class="top"><span class="ttl">'+APP_TITLE+'</span>'+
+    '<span class="sp"></span>'+sel+'<span class="sub">'+mid+'</span> '+right+'</div>'+
+    subnav+
+    (MODE==='local'
+      ? '<div class="demoflag">🧪 로컬 테스트(?demo=1) — 예시 데이터(실명 아님). 브라우저에만 저장.</div>'
+      : '<div class="demoflag">🚀 배포 빌드 — Supabase 연동 후 동작(준비 단계). 데이터는 서버에 저장됩니다.</div>');
+}
+function setClassView(c){ SESS.classView=c; render(); }
+
+/* ---- 로그인 ---- */
+function viewLogin(){
+  return '<div class="card" style="max-width:440px;margin:40px auto">'+
+    '<h2>바이오취업역량개발 진로설문</h2>'+
+    '<div class="seg" style="margin:8px 0 16px">'+
+      '<button class="'+(loginRole==='student'?'on':'')+'" onclick="setRole(\'student\')">학생</button>'+
+      '<button class="'+(loginRole==='prof'?'on':'')+'" onclick="setRole(\'prof\')">교수</button>'+
+    '</div>'+
+    '<label>이름</label><input type="text" id="inName" placeholder="이름">'+
+    '<label>'+(loginRole==='student'?'학번':'교번')+'</label><input type="text" id="inNum" placeholder="'+(loginRole==='student'?'학번':'교번')+'">'+
+    '<div style="margin-top:16px"><button class="btn" onclick="doLogin()">들어가기</button></div>'+
+    '<div class="muted" style="margin-top:14px">비밀번호 없이 <b>명단 대조</b>로 확인합니다(PBL 앱과 동일).<br>'+
+    (MODE==='local'
+      ? '예시 로그인(테스트) — 학생: <b>예시학생01 / 90000100</b> · 교수(슈퍼): <b>예시교수A / T0001</b></div>'
+      : '<span style="color:#c23a3a">⚠️ 이 빌드는 Supabase 연동 후 로그인됩니다(준비 단계). 로컬 테스트는 주소 끝에 <b>?demo=1</b> 을 붙이세요.</span></div>')+
+  '</div>';
+}
+function setRole(r){ loginRole=r; render(); }
+function doLogin(){
+  var nmR=(document.getElementById('inName').value||'').trim();
+  var noR=(document.getElementById('inNum').value||'').trim();
+  if(MODE==='remote'){ doLoginRemote(loginRole==='prof'?'prof':'student', nmR, noR); return; }
+  var nm=nmR, no=noR;
+  if(!nm||!no){ toast('이름과 '+(loginRole==='student'?'학번':'교번')+'을 넣어 주세요.'); return; }
+  if(loginRole==='prof'){
+    var p=PROFS.filter(function(x){return norm(x.name)===norm(nm)&&x.num===no;})[0];
+    if(!p || !p.num){ toast('명단에 없는 교수 정보입니다.'); return; }
+    SESS.role='prof'; SESS.prof=p; SESS.student=null; SESS.classView='ALL'; go('hub'); return;
+  }
+  var st=DB.student(nm,no);
+  if(!st){ toast('출석부에 없는 학생입니다. 이름·학번을 확인해 주세요.'); return; }
+  SESS.role='student'; SESS.student=st; SESS.prof=null;
+  draft = (DB.response(st.id)||{}).answers ? JSON.parse(JSON.stringify(DB.response(st.id).answers)) : {};
+  go('hub');
+}
+function logout(){ try{ sessionStorage.removeItem(TOKENKEY); }catch(e){} SESS={role:null,student:null,prof:null,classView:'ALL'}; draft={}; if(MODE==='remote'){ DB.d={students:[],responses:[],interviews:[]}; } go('login'); }
+
+/* ---- 개인정보 수집·이용 동의 (설문 진입 전) ---- */
+function viewConsent(){
+  return '<div class="card">'+
+    '<div class="validbanner" style="background:#fff6e6;border-color:#f0d79a;color:#7a5a10">※ 초안 — 배포 전 학교 개인정보 심의를 받은 정식 문구로 교체해야 합니다.</div>'+
+    '<h2>개인정보 수집·이용 동의</h2>'+
+    '<p class="muted">진로설문을 시작하기 전에 아래 내용을 확인하고 동의해 주세요.</p>'+
+    '<div class="prof-card" style="line-height:1.7">'+CONSENT_HTML+'</div>'+
+    '<label class="opt" style="margin-top:14px;font-weight:700"><input type="checkbox" id="consentChk"> 위 개인정보 수집·이용에 동의합니다.</label>'+
+    '<div class="row" style="margin-top:12px">'+
+      '<button class="btn" onclick="agreeConsent()">동의하고 시작</button>'+
+      '<button class="btn gray" onclick="go(\'hub\')">나중에</button>'+
+    '</div>'+
+    '<p class="hint" style="margin-top:8px">동의하지 않으면 진로설문·진로지도 활동 참여가 제한됩니다.</p>'+
+  '</div>';
+}
+function agreeConsent(){
+  var c=document.getElementById('consentChk');
+  if(!c || !c.checked){ toast('동의하셔야 진로지도 활동에 참여할 수 있습니다.'); return; }
+  setConsent(SESS.student.id);
+  if(MODE==='remote'){ apiCall('setConsent',{}).catch(function(){}); }
+  toast('동의가 저장되었습니다.'); go('home');
+}
+
+/* ---- 활동 허브 (로그인 후 첫 화면) ---- */
+function viewHub(){
+  var isStudent=SESS.role==='student';
+  var done = isStudent && !isEarly(SESS.student) && !!DB.response(SESS.student.id);
+  var exempt = isStudent && isEarly(SESS.student);
+  var intro = isStudent
+    ? '아래 활동 중 열려 있는 것을 눌러 진행하세요. 지금은 <b>1차 활동(진로 설문)</b>만 열려 있습니다.'
+    : '활동을 눌러 관리 화면으로 들어갑니다. 지금은 <b>1차 활동(진로 설문)</b>만 열려 있습니다.'
+      + (isSuper()? ' <span class="hint">(슈퍼관리자 — 활동 활성화·구성 권한)</span>':'');
+  var cards = ACTIVITIES.map(function(act){
+    var head='<span class="an">'+act.n+'차 활동</span>';
+    if(act.active){
+      var status='';
+      if(isStudent){ status = exempt? '<div class="as"><span class="pill t-jobs">설문 면제</span></div>'
+                          : (done? '<div class="as"><span class="pill t-start">완료 ✓</span></div>'
+                                 : '<div class="as"><span class="pill t-jobs">진행하기</span></div>'); }
+      else { status='<div class="as"><span class="pill t-jobs">관리</span></div>'; }
+      return '<div class="actbtn on" onclick="openActivity('+act.n+')">'+head+
+        '<div class="at">'+esc(act.name)+'</div>'+status+'</div>';
+    }
+    return '<div class="actbtn locked" onclick="openActivity('+act.n+')">'+head+
+      '<div class="at">'+esc(act.name)+'</div><div class="lock">🔒</div><div class="as">준비 중</div></div>';
+  }).join('');
+  return '<div class="card"><h2>활동 목록</h2>'+
+    '<p class="muted">'+intro+'</p>'+
+    '<div class="acts">'+cards+'</div></div>';
+}
+function openActivity(n){
+  var act=ACTIVITIES.filter(function(a){return a.n===n;})[0];
+  if(!act || !act.active){ toast('아직 준비 중인 활동입니다.'); return; }
+  if(act.key==='survey'){
+    if(SESS.role!=='student'){ go('dash'); return; }
+    if(isEarly(SESS.student)) go('home');                 /* 조기취업자 = 설문 면제(동의 불필요) */
+    else if(!hasConsent(SESS.student)) go('consent');     /* 미동의 → 개인정보 동의 화면 먼저 */
+    else go('home');
+  }
+}
+
+/* ---- 학생 홈 ---- */
+function viewStudentHome(){
+  // 조기 취업자 — 설문 면제 안내(설문 강요하지 않음)
+  if(isEarly(SESS.student)){
+    return '<div class="card"><h2>안녕하세요, '+esc(SESS.student.name)+'님</h2>'+
+      '<p class="muted">학번 '+esc(SESS.student.no)+'</p>'+
+      '<div class="note" style="margin:12px 0;background:#eaf6ec;border-color:#bfe3c6">'+
+        '🎉 <b>조기 취업자로 등록되어 설문이 면제되었습니다.</b><br>'+
+        '취업을 축하드립니다. 별도로 작성하실 진로설문이 없습니다. 변동이 있으면 교수님께 알려 주세요.</div>'+
+    '</div>';
+  }
+  var r=DB.response(SESS.student.id);
+  var done = !!r;
+  return '<div class="card"><h2>안녕하세요, '+esc(SESS.student.name)+'님</h2>'+
+    '<p class="muted">학번 '+esc(SESS.student.no)+'</p>'+
+    '<div class="note" style="margin:12px 0">이번 학기는 진로설문 → 온라인 조사(채용사이트 실제 공고·모집요강·창업 지원사업) → 서류·모의면접 순으로 진행됩니다. 먼저 진로설문을 작성해 주세요.</div>'+
+    '<div class="row">'+
+      '<button class="btn" onclick="go(\'survey\')">'+(done?'진로설문 수정':'진로설문 작성')+'</button>'+
+      (done?'<button class="btn gray" onclick="go(\'card\')">내 진로 프로필 카드</button>':'')+
+    '</div>'+
+    (done?'<p class="muted" style="margin-top:12px">최근 제출: '+r.submitted_at+' · 트랙: <span class="pill '+(TRACK[r.track]||'t-none')+'">'+r.track+'</span></p>':'')+
+  '</div>';
+}
+
+/* ---- 설문 위저드(단계별 페이지 넘김) ---- */
+/* 단계: A(진로 방향) → T(트랙 문항, 미정이면 스킵) → D(대학원) → E(마무리) */
+function activeSteps(){
+  var s=[{key:'A', name:'진로 방향', intro:'먼저 졸업 후 진로 방향을 정해 주세요.'}];
+  if(draft.A1 && draft.A1!=='미정') s.push({key:'T', name:'트랙 문항', intro:'선택한 진로에 맞는 문항입니다.'});
+  s.push({key:'D', name:'대학원', intro:'대학원 진학 계획을 알려 주세요.'});
+  s.push({key:'E', name:'마무리', intro:'마지막 단계입니다. 다 채우고 [제출]을 눌러 주세요.'});
+  return s;
+}
+function stepKeyMatch(id, key){
+  var c=id.charAt(0);
+  if(key==='A') return c==='A';
+  if(key==='T') return c==='B'||c==='C'||c==='F';
+  if(key==='D') return c==='D';
+  if(key==='E') return c==='E';
+  return false;
+}
+function viewSurvey(){
+  var steps=activeSteps();
+  if(stepIdx>=steps.length) stepIdx=steps.length-1;
+  if(stepIdx<0) stepIdx=0;
+  var cur=steps[stepIdx];
+  var head=steps.map(function(s,i){
+    var cls='wstep'+(i===stepIdx?' on':(i<stepIdx?' done':''));
+    return '<div class="'+cls+'">'+(i+1)+'. '+s.name+'</div>';
+  }).join('');
+  var h='<div class="card"><div class="wizard-head">'+head+'</div>'+
+        '<div class="wprog">'+(stepIdx+1)+' / '+steps.length+' 단계</div>'+
+        '<div class="stephead">'+cur.name+'</div>'+
+        '<p class="muted">'+cur.intro+'</p>';
+  var nBad=Object.keys(invalid).length;
+  if(showValidateMsg && nBad){
+    h+='<div class="validbanner">⚠️ 아직 답하지 않은 문항이 있습니다 ('+nBad+'개). 붉게 표시된 문항을 채워 주세요.</div>';
+  }
+  var any=false;
+  Q.forEach(function(item){
+    if(item.sec) return;
+    if(!stepKeyMatch(item.id, cur.key)) return;
+    if(item.show && !item.show(draft)) return;
+    h+= renderQ(item); any=true;
+  });
+  if(!any) h+='<p class="muted" style="margin:16px 0">이 단계에서 응답할 문항이 없습니다.</p>';
+  var last = stepIdx===steps.length-1;
+  h+='<div class="navrow">'+
+      '<div>'+(stepIdx>0
+        ? '<button class="btn gray" onclick="prevStep()">← 이전</button>'
+        : '<button class="btn gray" onclick="go(\'home\')">취소</button>')+'</div>'+
+      '<div>'+(last
+        ? '<button class="btn" onclick="submitSurvey()">제출</button>'
+        : '<button class="btn" onclick="nextStep()">다음 →</button>')+'</div>'+
+     '</div></div>';
+  return h;
+}
+/* 지금 단계에서 화면에 보이는(show 통과) 필수 문항 중 미응답인 것 목록 */
+function isEmptyAns(item){
+  var v=draft[item.id];
+  if(item.type==='multi') return !(v && v.length);
+  if(item.type==='scale') return !(v>=1 && v<=5);
+  return v===undefined || v===null || (''+v).trim()==='';
+}
+function validateStep(){
+  var steps=activeSteps(); var cur=steps[stepIdx];
+  invalid={};
+  Q.forEach(function(item){
+    if(item.sec) return;
+    if(!stepKeyMatch(item.id, cur.key)) return;
+    if(item.show && !item.show(draft)) return;   // 조건부 숨김 문항은 검사 제외
+    if(item.optional) return;                     // 선택 문항은 비워도 통과
+    if(isEmptyAns(item)) invalid[item.id]=true;
+  });
+  return Object.keys(invalid);
+}
+function scrollToInvalid(){
+  setTimeout(function(){
+    var el=document.querySelector('.qcard.invalid');
+    if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+  }, 40);
+}
+function nextStep(){
+  var bad=validateStep();
+  if(bad.length){ showValidateMsg=true; render(); scrollToInvalid(); return; }
+  showValidateMsg=false; invalid={};
+  var steps=activeSteps();
+  if(stepIdx<steps.length-1){ stepIdx++; render(); window.scrollTo(0,0); }
+}
+function prevStep(){ showValidateMsg=false; invalid={}; if(stepIdx>0){ stepIdx--; render(); window.scrollTo(0,0); } }
+function renderQ(item){
+  var v=draft[item.id];
+  var bad = !!invalid[item.id];
+  var req = item.optional ? ' <span class="hint">(선택)</span>' : '<span class="reqmark">*</span>';
+  var h='<div class="qcard'+(bad?' invalid':'')+'"><div class="qhead"><span class="qbadge">'+item.id+'</span><span>'+item.q+req+'</span></div>';
+  if(item.type==='single'){
+    h+= item.opt.map(function(o){
+      return '<label class="opt"><input type="radio" name="'+item.id+'" '+(v===o?'checked':'')+' onchange="setSingle(\''+item.id+'\',\''+esc(o)+'\')">'+o+'</label>';
+    }).join('');
+  } else if(item.type==='multi'){
+    v=v||[];
+    h+= item.opt.map(function(o){
+      return '<label class="opt"><input type="checkbox" '+(v.indexOf(o)>=0?'checked':'')+' onchange="toggleMulti(\''+item.id+'\',\''+esc(o)+'\')">'+o+'</label>';
+    }).join('');
+  } else if(item.type==='scale'){
+    h+='<div class="row">'+[1,2,3,4,5].map(function(n){
+      return '<label class="opt"><input type="radio" name="'+item.id+'" '+(v===n?'checked':'')+' onchange="setSingle(\''+item.id+'\','+n+')">'+n+'</label>';
+    }).join('')+'<span class="hint">1=낮음 ~ 5=높음</span></div>';
+  } else if(item.type==='text'){
+    h+='<input type="text" value="'+(v?esc(v):'')+'" oninput="setText(\''+item.id+'\',this.value)">';
+  } else if(item.type==='textarea'){
+    h+='<textarea oninput="setText(\''+item.id+'\',this.value)">'+(v?esc(v):'')+'</textarea>';
+  } else if(item.type==='num'){
+    h+='<input type="number" step="0.01" value="'+(v!=null?v:'')+'" oninput="setText(\''+item.id+'\',this.value)" style="max-width:160px">';
+  }
+  if(bad) h+='<div class="qerr">'+(item.reqMsg||'이 문항에 응답해 주세요.')+'</div>';
+  return h+'</div>';
+}
+function setSingle(id,val){ draft[id]=val; delete invalid[id]; render(); }
+function setText(id,val){ draft[id]=val; if((''+val).trim()!=='') delete invalid[id]; }   // 텍스트는 재렌더 안 함(커서 유지)
+function toggleMulti(id,val){
+  var a=draft[id]||[]; var i=a.indexOf(val);
+  if(i>=0) a.splice(i,1); else a.push(val);
+  draft[id]=a;
+  if(a.length) delete invalid[id];
+}
+function submitSurvey(){
+  var bad=validateStep();
+  if(bad.length){ showValidateMsg=true; render(); scrollToInvalid(); return; }
+  showValidateMsg=false; invalid={};
+  var track = draft.A1;
+  var ans = JSON.parse(JSON.stringify(draft));
+  DB.saveResponse(SESS.student.id, track, ans);
+  if(MODE==='remote'){ apiCall('saveResponse',{track:track, answers:ans}).then(function(res){ if(!res.j||res.j.ok!==true) toast('서버 저장 실패 — 다시 제출해 주세요.'); }).catch(function(){ toast('서버 연결 실패 — 다시 제출해 주세요.'); }); }
+  toast('제출되었습니다.');
+  go('card');
+}
+
+/* ---- 진로 프로필 카드 ---- */
+function viewProfileCard(sid, self){
+  var st=DB.d.students.filter(function(x){return x.id===sid;})[0];
+  var r=DB.response(sid);
+  if(!r) return '<div class="card"><h2>진로 프로필 카드</h2><p class="muted">아직 설문 응답이 없습니다.</p></div>';
+  var a=r.answers;
+  function join(x){ return (x&&x.length)? (x.join? x.join(', ') : x) : '—'; }
+  var rows='';
+  rows+=kv('진로 트랙','<span class="pill '+(TRACK[r.track]||'t-none')+'">'+r.track+'</span>'+(a.A2?' ('+join(a.A2)+')':''));
+  rows+=kv('확신 정도', a.A4? a.A4+' / 5':'—');
+  if(hasTrack(a,'취업')){
+    rows+=kv('희망 분야', join(a.B1));
+    rows+=kv('희망 직무', join(a.B2));
+    rows+=kv('희망 지역', join(a.B3));
+    rows+=kv('기업 형태', join(a.B6));
+    rows+=kv('희망 기업', a.B7||'—');
+  }
+  if(hasTrack(a,'편입')){
+    rows+=kv('편입 유형', a.C1||'—');
+    rows+=kv('편입 계열', a.C3||'—');
+    rows+=kv('편입 학과', a.C4||'—');
+    rows+=kv('희망 학교', a.C5||'—');
+  }
+  if(hasTrack(a,'창업')){
+    rows+=kv('창업 단계', a.F1||'—');
+    rows+=kv('창업 분야', join(a.F2));
+    rows+=kv('아이템', a.F3||'—');
+    rows+=kv('필요 지원', join(a.F5));
+  }
+  rows+=kv('대학원', a.D1||'—');
+  rows+=kv('준비도(자기평가)', a.E1? a.E1+' / 5':'—');
+  rows+=kv('가장 큰 고민', a.E2||'—');
+  rows+=kv('필요한 도움', join(a.E3));
+  return '<div class="card" id="profileCard"><h2>진로 프로필 카드 — '+esc(st.name)+'</h2>'+
+    '<div class="prof-card"><div class="kv">'+rows+'</div></div>'+
+    '<p class="muted" style="margin-top:10px">제출 '+r.submitted_at+'</p>'+
+    '<div class="row" style="margin-top:12px">'+
+      '<button class="btn sm" onclick="copyProfile(\''+sid+'\')">📋 복사</button>'+
+      '<button class="btn sm gray" onclick="downloadProfileTxt(\''+sid+'\')">⬇ 텍스트(.txt)</button>'+
+      '<button class="btn sm gray" onclick="downloadProfileDoc(\''+sid+'\')">⬇ 워드(.doc)</button>'+
+      '<button class="btn sm gray" onclick="printProfile(\''+sid+'\')">🖨 PDF(인쇄)</button>'+
+    '</div>'+
+    '<p class="hint" style="margin-top:6px">복사/다운로드하면 항목별로 정돈된 텍스트가 됩니다 (진로지도 사이트에 붙여넣기 좋게).</p>'+
+    (self?'<div class="row" style="margin-top:10px"><button class="btn gray" onclick="go(\'survey\')">응답 수정</button></div>':
+          '<div class="row" style="margin-top:10px"><button class="btn gray" onclick="go(\'groups\')">← 트랙 그룹</button></div>')+
+  '</div>';
+}
+
+/* ── 진로 프로필을 「항목명: 값」 한 줄씩 정돈된 텍스트로 ── */
+function profileText(sid){
+  var st=DB.d.students.filter(function(x){return x.id===sid;})[0];
+  var r=DB.response(sid); if(!st||!r) return '';
+  var a=r.answers, L=[];
+  function J(x){ return (x&&x.length)? (x.join? x.join(', ') : x) : ''; }
+  function line(label, val){ if(val!==undefined && val!==null && String(val).trim()!=='' && val!=='—') L.push(label+': '+val); }
+  L.push('[진로 프로필] '+st.name+' ('+st.no+')');
+  /* 진로 방향 + 확신도 (+ 병행 트랙) */
+  var dir=r.track + (a.A2&&a.A2.length? ' ('+J(a.A2)+')':'') + (a.A4? ' · 확신도 '+a.A4+'/5':'');
+  L.push('진로 방향: '+dir);
+  if(a.A5) line('미정 사유', a.A5);
+  if(hasTrack(a,'취업')){
+    line('희망 분야', J(a.B1));
+    line('희망 직무', J(a.B2));
+    var reg=J(a.B3)+(a.B4&&a.B4.length? ' / 피하고 싶은 지역: '+J(a.B4):'');
+    line('희망 근무지역', reg);
+    line('희망 연봉', a.B5);
+    line('희망 기업형태', J(a.B6));
+    line('희망 기업', a.B7);
+    line('보유 자격증', J(a.B8));
+    line('준비 중 자격증', a.B9);
+    line('어학', a.B10==='보유(점수 입력)'? (a.B10a||'보유') : a.B10);
+    line('인턴·현장실습', a.B11==='있음'? (a.B11a||'있음') : a.B11);
+  }
+  if(hasTrack(a,'편입')){
+    var cty=a.C1||''; if(a.C1==='연계편입'&&a.C1a) cty+=' — '+a.C1a; if(a.C1==='학사편입'&&a.C2) cty+=' ('+a.C2+')';
+    line('편입 유형', cty);
+    line('편입 계열', a.C3);
+    line('희망 편입 학과', a.C4);
+    line('희망 편입 학교/지역', a.C5);
+    line('편입 후 목표', a.C6);
+    line('편입 준비 현황', J(a.C7));
+    line('편입 어학', a.C8==='보유(점수 입력)'? (a.C8a||'보유') : a.C8);
+  }
+  if(hasTrack(a,'창업')){
+    line('창업 준비단계', a.F1);
+    line('창업 분야', J(a.F2));
+    line('창업 아이템', a.F3);
+    line('창업 형태', a.F4);
+    line('필요한 지원', J(a.F5));
+    line('창업 준비현황', a.F6);
+    line('관심 지원사업', J(a.F7));
+    line('창업 경험', a.F8==='있음'? (a.F8a||'있음') : a.F8);
+  }
+  if(a.D1==='희망'){
+    var gr='희망'; var det=[a.D2,a.D3,a.D4].filter(function(x){return x;}).join(' · '); if(det) gr+='('+det+')';
+    line('대학원 진학', gr);
+  } else if(a.D1){ line('대학원 진학', a.D1); }
+  line('진로 준비도', a.E1? a.E1+'/5':'');
+  line('가장 큰 고민', a.E2);
+  line('필요한 도움', J(a.E3));
+  L.push('(제출: '+r.submitted_at+')');
+  return L.join('\n');
+}
+/* file:// 에서도 되는 복사 — clipboard API 실패 시 execCommand fallback */
+function copyText(text){
+  function fallback(){
+    try{
+      var ta=document.createElement('textarea'); ta.value=text;
+      ta.style.position='fixed'; ta.style.left='-9999px'; document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      var ok=document.execCommand('copy'); ta.remove(); return ok;
+    }catch(e){ return false; }
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){ toast('복사됐습니다.'); },
+      function(){ toast(fallback()?'복사됐습니다.':'복사가 막혔습니다 — 텍스트 다운로드를 이용하세요.'); });
+  }else{
+    toast(fallback()?'복사됐습니다.':'복사가 막혔습니다 — 텍스트 다운로드를 이용하세요.');
+  }
+}
+function copyProfile(sid){ copyText(profileText(sid)); }
+function downloadBlob(name, text, mime){
+  try{
+    var b=new Blob(['﻿'+text],{type:(mime||'text/plain')+';charset=utf-8'});
+    var u=URL.createObjectURL(b), a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(u); a.remove(); },900);
+    toast(name+' 을(를) 내려받았습니다.');
+  }catch(e){ toast('다운로드가 막혔습니다 — 복사 버튼을 이용하세요.'); }
+}
+function downloadProfileTxt(sid){
+  var st=DB.d.students.filter(function(x){return x.id===sid;})[0];
+  downloadBlob('career_profile_'+(st?st.no:sid)+'.txt', profileText(sid));
+}
+/* ── 전체 학생 프로필을 하나의 텍스트로(구분선으로 학생 구분) ── */
+function allProfilesText(){
+  var SEP='──────────────────────────────';
+  var blocks=[], missing=[];
+  viewStudents().forEach(function(st){
+    if(isEarly(st)){
+      blocks.push('[조기취업] '+st.name+' ('+st.no+')'+(st.earlyCompany?' — 취업처: '+st.earlyCompany:''));
+      return;
+    }
+    var r=DB.response(st.id);
+    if(!r){ missing.push(st.name+'('+st.no+')'); return; }
+    blocks.push(profileText(st.id));
+  });
+  if(!blocks.length) return '';   /* 프로필·조기취업 블록이 하나도 없으면(전원 미응답 등) 빈 값 → 안내 */
+  var out=blocks.join('\n\n'+SEP+'\n\n');
+  if(missing.length) out += '\n\n'+SEP+'\n\n※ 미응답: '+missing.join(', ');
+  return out;
+}
+function downloadAllProfilesTxt(){
+  var t=allProfilesText();
+  if(!t){ toast('아직 제출한 학생이 없습니다.'); return; }
+  downloadBlob('all_career_profiles.txt', t);
+}
+function downloadAllProfilesDoc(){
+  var t=allProfilesText();
+  if(!t){ toast('아직 제출한 학생이 없습니다.'); return; }
+  var body=esc(t).replace(/\n/g,'<br>');
+  var html='<html xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"></head>'+
+    '<body style="font-family:\'맑은 고딕\',sans-serif;font-size:11pt;line-height:1.6">'+body+'</body></html>';
+  downloadBlob('all_career_profiles.doc', html, 'application/msword');
+}
+function downloadProfileDoc(sid){
+  var st=DB.d.students.filter(function(x){return x.id===sid;})[0];
+  var body=esc(profileText(sid)).replace(/\n/g,'<br>');
+  var html='<html xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"></head>'+
+    '<body style="font-family:\'맑은 고딕\',sans-serif;font-size:11pt;line-height:1.6">'+body+'</body></html>';
+  downloadBlob('career_profile_'+(st?st.no:sid)+'.doc', html, 'application/msword');
+}
+function printProfile(sid){
+  var st=DB.d.students.filter(function(x){return x.id===sid;})[0];
+  var body=esc(profileText(sid)).replace(/\n/g,'<br>');
+  var w=window.open('','_blank');
+  if(!w){ toast('팝업이 막혔습니다 — 브라우저에서 팝업을 허용하세요.'); return; }
+  w.document.write('<html><head><meta charset="utf-8"><title>career_profile_'+(st?st.no:sid)+'</title>'+
+    '<style>body{font-family:"맑은 고딕",sans-serif;font-size:12pt;line-height:1.7;padding:24px;white-space:normal}</style></head>'+
+    '<body>'+body+'</body></html>');
+  w.document.close(); w.focus();
+  setTimeout(function(){ try{ w.print(); }catch(e){} }, 300);
+}
+function kv(k,v){ return '<div class="k">'+k+'</div><div>'+v+'</div>'; }
+
+/* ---- 교수: 대시보드 ---- */
+function viewDash(){
+  var earlyN = earlyStudents().length;
+  var total = surveyStudents().length;          // 설문 대상 = 조기취업자 제외
+  var resp = statResponses();                    // 통계 응답도 조기취업자 제외
+  var respN = resp.length;
+  // 트랙 분포
+  var trk={취업:0,편입:0,창업:0,병행:0,미정:0};
+  resp.forEach(function(r){ if(trk[r.track]!=null) trk[r.track]++; });
+  // 준비도 평균
+  var e1=resp.map(function(r){return +r.answers.E1||0;}).filter(function(x){return x>0;});
+  var e1avg = e1.length? (e1.reduce(function(s,x){return s+x;},0)/e1.length).toFixed(2) : '—';
+  // 희망 지역(B3) 집계
+  var reg={}; resp.forEach(function(r){ (r.answers.B3||[]).forEach(function(g){ reg[g]=(reg[g]||0)+1; }); });
+  // 창업 준비단계(F1)
+  var f1={}; resp.forEach(function(r){ if(r.answers.F1) f1[r.answers.F1]=(f1[r.answers.F1]||0)+1; });
+
+  var h='<div class="card"><h2>설문 대시보드 <span class="hint">— 보기: '+classLabel(viewClass())+'</span></h2>'+
+    '<p class="muted">응답 '+respN+' / '+total+'명 ('+(total?Math.round(respN/total*100):0)+'%)'+
+      (earlyN? ' · <b>조기취업 '+earlyN+'명(설문 면제)</b>':'')+
+      ' · 진로 준비도 평균 '+e1avg+' / 5</p>'+
+    '<div class="row" style="margin:4px 0 6px"><button class="btn sm" onclick="doExcel()">⬇ 원본 데이터 엑셀 다운로드</button>'+
+      '<span class="hint">학생 1명=1행, 문항별 컬럼 · 교수 본인이 직접 받는 용도</span></div>'+
+    '<div class="row" style="margin:0 0 10px"><button class="btn sm gray" onclick="downloadAllProfilesTxt()">⬇ 전체 프로필 한번에 (txt)</button>'+
+      '<button class="btn sm gray" onclick="downloadAllProfilesDoc()">⬇ 전체 프로필 한번에 (워드)</button>'+
+      '<span class="hint">제출한 학생 전원의 프로필을 구분선으로 나눠 한 파일에</span></div>'+
+    demoTools()+
+    '<h3>진로 트랙 분포 <span class="hint">(조기취업자 제외)</span></h3>'+barTable(trk, respN)+
+    '<h3>창업 준비 단계 (창업 트랙)</h3>'+ (Object.keys(f1).length? barTable(f1, respN) : '<p class="muted">아직 없음</p>')+
+    '<h3>희망 근무 지역 (취업 트랙, 복수응답)</h3>'+ (Object.keys(reg).length? barTable(reg, respN) : '<p class="muted">아직 없음</p>')+
+  '</div>';
+  return h;
+}
+/* 🧪 시연용 예시 데이터 버튼 — MODE==='local'(로컬/테스트)에서만 렌더.
+   ⛔ 원격/배포 모드(MODE!=='local')에서는 이 함수가 빈 문자열을 반환하므로
+      버튼 자체가 화면에 존재하지 않는다 → 배포본·학생 화면에 절대 노출되지 않음. */
+function demoTools(){
+  if(MODE!=='local') return '';               /* ← 배포 모드에서는 렌더 안 함 */
+  var n=DB.demoCount();
+  return '<div class="note" style="margin:6px 0 14px;background:#fff6e6;border-color:#f0d79a">'+
+    '<b>🧪 시연용 도구</b> <span class="hint">— 실제 학생 응답이 아닙니다 (로컬 테스트 전용, 배포본에는 없음)</span><br>'+
+    '<div class="row" style="margin-top:8px">'+
+      '<button class="btn sm" onclick="doFillDemo()">🧪 예시 데이터 채우기</button>'+
+      '<button class="btn sm gray" onclick="doClearDemo()">예시 데이터 삭제</button>'+
+      (n? '<span class="hint">현재 예시 응답 '+n+'건</span>':'')+
+    '</div></div>';
+}
+function doFillDemo(){ DB.fillDemo(); toast('예시 응답 '+DB.demoCount()+'건을 채웠습니다.'); render(); }
+function doClearDemo(){
+  if(!DB.demoCount()){ toast('지울 예시 응답이 없습니다.'); return; }
+  if(confirm('예시 응답을 모두 지울까요? (실제 학생 응답과 명단·계정은 유지됩니다)')){
+    DB.clearDemo(); toast('예시 응답을 삭제했습니다.'); render();
+  }
+}
+function barTable(obj, max){
+  var m=Math.max.apply(null,[1].concat(Object.keys(obj).map(function(k){return obj[k];})));
+  var rows=Object.keys(obj).map(function(k){
+    var v=obj[k];
+    return '<tr><td style="width:130px">'+k+'</td><td><div class="bar" style="width:'+(v/m*100)+'%"></div></td>'+
+      '<td style="width:40px;text-align:right">'+v+'</td></tr>';
+  }).join('');
+  return '<table>'+rows+'</table>';
+}
+
+/* ---- 교수: 트랙별 그룹화 ---- */
+function viewGroups(){
+  var order=['취업','편입','창업','병행','미정'];
+  var by={}; order.forEach(function(t){by[t]=[];});
+  var studs=viewStudents();
+  studs.forEach(function(st){
+    var r=DB.response(st.id);
+    var t = isEarly(st)? '조기취업(면제)' : (r? r.track : '(미응답)');
+    if(!by[t]) by[t]=[];
+    by[t].push({st:st, r:r});
+  });
+  var h='<div class="card"><h2>트랙별 그룹화 보기 <span class="hint">— 보기: '+classLabel(viewClass())+'</span></h2>'+
+    '<p class="muted">학기 후반(12주~)에 이 그룹으로 모의면접·피칭을 진행합니다. 조기취업자는 면제로 별도 표시됩니다.</p>'+
+    (studs.length? '' : '<p class="muted">이 반은 아직 등록된 학생이 없습니다.</p>');
+  order.concat(['조기취업(면제)','(미응답)']).forEach(function(t){
+    var g=by[t]||[]; if(!g.length && (t==='(미응답)'||t==='조기취업(면제)')) return;
+    h+='<h3><span class="pill '+(TRACK[t]||'t-none')+'">'+t+'</span> &nbsp;'+g.length+'명</h3>';
+    if(!g.length){ h+='<p class="muted">없음</p>'; return; }
+    h+='<table><tr><th>반</th><th>이름</th><th>학번</th><th>준비도</th><th>고민</th><th></th></tr>'+
+      g.map(function(x){
+        var a=x.r?x.r.answers:{};
+        return '<tr><td>'+x.st.klass+'</td><td>'+esc(x.st.name)+'</td><td>'+esc(x.st.no)+'</td>'+
+          '<td>'+(a.E1?a.E1+'/5':'—')+'</td>'+
+          '<td class="muted">'+(a.E2?esc(a.E2.slice(0,20)):'—')+'</td>'+
+          '<td>'+(x.r?'<button class="btn sm gray" onclick="go(\'sc:'+x.st.id+'\')">카드</button>':'')+'</td></tr>';
+      }).join('')+'</table>';
+  });
+  h+='</div>';
+  return h;
+}
+
+/* ---- 교수: 명단 (조기취업자 체크·기록은 여기서 바로) ---- */
+/* 슈퍼관리자 전용 — 출석부 등록 + 학생 추가 패널 */
+function superRosterTools(){
+  if(!isSuper()) return '';
+  var h='<div class="note" style="background:#fff6e6;border-color:#f0d79a">'+
+    '<b>명단 관리 (슈퍼관리자 전용)</b> <span class="hint">— 출석부 등록·학생 추가/수정/삭제는 슈퍼관리자만 가능합니다.</span>'+
+    '<div class="row" style="margin-top:8px">'+
+      '<button class="btn sm" onclick="toggleReg()">📄 출석부/명단 등록</button>'+
+      '<button class="btn sm gray" onclick="toggleAddForm()">＋ 학생 추가</button>'+
+    '</div>';
+  if(addOpen){
+    h+='<div class="row" style="margin-top:10px;align-items:flex-end">'+
+      '<span><div class="hint">이름</div><input type="text" id="addName" style="width:110px"></span>'+
+      '<span><div class="hint">학번</div><input type="text" id="addNo" style="width:130px"></span>'+
+      '<span><div class="hint">반</div><select id="addKlass">'+classOptions(viewClass()==='ALL'?'F1':viewClass())+'</select></span>'+
+      '<button class="btn sm" onclick="submitAddStudent()">추가</button>'+
+      '<button class="btn sm gray" onclick="toggleAddForm()">취소</button></div>';
+  }
+  if(regState.open){
+    h+='<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">'+
+      '<div class="row" style="align-items:flex-end">'+
+        '<span><div class="hint">등록할 반</div><select id="regKlass">'+classOptions(viewClass()==='ALL'?'F1':viewClass())+'</select></span>'+
+        '<span><div class="hint">출석부 PDF 또는 CSV(자동 추출)</div><input type="file" accept=".pdf,.csv,.txt" onchange="regPickFile(this)"></span>'+
+      '</div>'+
+      '<div class="hint" style="margin-top:8px">또는 명단 붙여넣기 — 한 줄에 「이름　학번」 또는 「학번　이름」 (엑셀·학사시스템에서 복사).</div>'+
+      '<textarea id="regPaste" style="width:100%;height:74px" placeholder="예)&#10;홍길동	20250001&#10;김철수	20250002"></textarea>'+
+      '<div class="row" style="margin-top:6px"><button class="btn sm" onclick="regLoadPaste()">붙여넣기 불러오기</button>'+
+        '<button class="btn sm gray" onclick="toggleReg()">닫기</button></div>';
+    if(regState.rows.length){
+      h+='<div style="margin-top:10px"><b>미리보기 — '+regState.rows.length+'명</b> <span class="hint">(잘못된 행은 고치거나 ✕로 지운 뒤 등록)</span>'+
+        '<table><tr><th>#</th><th>이름</th><th>학번</th><th></th></tr>'+
+        regState.rows.map(function(r,i){
+          return '<tr><td>'+(i+1)+'</td>'+
+            '<td><input type="text" value="'+esc(r.name)+'" oninput="regEditRow('+i+',\'name\',this.value)" style="width:110px"></td>'+
+            '<td><input type="text" value="'+esc(r.no)+'" oninput="regEditRow('+i+',\'no\',this.value)" style="width:130px"></td>'+
+            '<td><button class="btn sm gray" onclick="regDelRow('+i+')">✕</button></td></tr>';
+        }).join('')+'</table>'+
+        '<div class="row" style="margin-top:8px">'+
+          '<label class="opt"><input type="radio" name="regMode" value="append" checked> 기존에 추가</label>'+
+          '<label class="opt"><input type="radio" name="regMode" value="overwrite"> 이 반 덮어쓰기(기존 삭제)</label>'+
+          '<button class="btn" onclick="regSubmit()">등록 확정</button></div>'+
+      '</div>';
+    }
+    h+='</div>';
+  }
+  return h+'</div>';
+}
+function viewRoster(){
+  var studs=viewStudents();
+  var earlyN=earlyStudents().length;
+  var sup=isSuper();
+  var h='<div class="card"><h2>수강생 명단 <span class="hint">— 보기: '+classLabel(viewClass())+' · '+studs.length+'명</span></h2>'+
+    '<p class="muted">'+(MODE==='local'?'명단은 브라우저에 저장됩니다.':'명단은 서버(Supabase)에 저장됩니다.')+' 출석부 등록·학생 추가/수정/삭제는 슈퍼관리자 전용입니다.</p>'+
+    superRosterTools()+
+    '<div class="note" style="background:#eef4ff">이미 취업한 학생은 <b>조기취업</b>에 체크하세요 — 설문이 면제되고 응답률·통계에서 제외됩니다. '+
+      (sup?'슈퍼관리자는 전 반, ':'')+'<b>본인 반 학생만 수정</b> 가능합니다(다른 반은 열람만).'+
+      (earlyN? ' <b>(현재 보기 기준 조기취업 '+earlyN+'명)</b>':'')+'</div>';
+  if(!studs.length){
+    h+='<p class="muted" style="margin:16px 0">이 반은 아직 등록된 학생이 없습니다. '+(sup?'위 [출석부/명단 등록]으로 추가하세요.':'슈퍼관리자가 출석부를 등록하면 표시됩니다.')+'</p></div>';
+    return h;
+  }
+  h+='<table><tr><th>반</th><th>이름</th><th>학번</th><th>동의</th><th>설문</th><th>조기취업</th><th>취업처·비고</th>'+(sup?'<th>관리</th>':'')+'</tr>'+
+    studs.map(function(st){
+      if(sup && editSid===st.id){
+        return '<tr style="background:#fff6e6">'+
+          '<td><select id="edKlass_'+st.id+'">'+classOptions(st.klass)+'</select></td>'+
+          '<td><input id="edName_'+st.id+'" value="'+esc(st.name)+'" style="width:90px"></td>'+
+          '<td><input id="edNo_'+st.id+'" value="'+esc(st.no)+'" style="width:120px"></td>'+
+          '<td colspan="4" class="muted">수정 중…</td>'+
+          '<td><button class="btn sm" onclick="saveEdit(\''+st.id+'\')">저장</button> <button class="btn sm gray" onclick="cancelEdit()">취소</button></td></tr>';
+      }
+      var r=DB.response(st.id), e=isEarly(st), can=canManage(st);
+      var status = e? '<span class="pill t-jobs">조기취업(면제)</span>'
+                    : (r?'<span class="pill '+(TRACK[r.track]||'t-none')+'">'+r.track+'</span>':'<span class="muted">미응답</span>');
+      var consent = e? '<span class="muted">면제</span>'
+                    : (hasConsent(st)? '<span style="color:var(--ok)" title="'+esc((st.consent&&st.consent.at)||'')+'">✓ 동의</span>'
+                                     : '<span class="muted">미동의</span>');
+      var chk = '<input type="checkbox" '+(e?'checked':'')+' '+(can?'':'disabled')+' onchange="toggleEarly(\''+st.id+'\',this.checked)">';
+      var memo = '<input type="text" placeholder="취업처·메모(선택)" value="'+esc(st.earlyCompany||'')+'" '+((e&&can)?'':'disabled style="opacity:.5"')+
+          ' oninput="setEarlyMemo(\''+st.id+'\',this.value)" style="width:200px">';
+      var manage = sup? '<td><button class="btn sm gray" onclick="startEdit(\''+st.id+'\')">수정</button> '+
+          '<button class="btn sm" style="background:var(--bad)" onclick="confirmDeleteStudent(\''+st.id+'\')">삭제</button></td>' : '';
+      return '<tr><td>'+st.klass+'</td><td>'+esc(st.name)+'</td><td>'+esc(st.no)+'</td>'+
+        '<td>'+consent+'</td>'+
+        '<td>'+status+'</td>'+
+        '<td style="text-align:center" title="'+(can?'':'다른 반은 열람만')+'">'+chk+'</td>'+
+        '<td>'+memo+'</td>'+manage+'</tr>';
+    }).join('')+'</table>'+
+    (MODE==='local'?'<div class="row" style="margin-top:12px"><button class="btn sm gray" onclick="resetDemo()">응답 데이터 초기화(시연용)</button></div>':'')+
+  '</div>';
+  return h;
+}
+function stById(sid){ return DB.d.students.filter(function(x){return x.id===sid;})[0]; }
+function toggleEarly(sid, on){ if(!canManage(stById(sid))){ toast('본인 반 학생만 수정할 수 있습니다.'); render(); return; } setEarly(sid, on); if(MODE==='remote'){ apiCall('setEarly',{sid:sid, on:on}).catch(function(){}); } render(); }
+function setEarlyMemo(sid, val){ if(!canManage(stById(sid))) return; setEarly(sid, undefined, val); if(MODE==='remote'){ apiCall('setEarly',{sid:sid, company:val}).catch(function(){}); } }  /* 텍스트는 재렌더 안 함(포커스 유지) */
+function resetDemo(){ if(confirm('입력된 설문 응답을 모두 지울까요? (수강생 명단·조기취업 표시는 유지)')){ DB.d.responses=[]; DB.d.interviews=[]; DB.save(); toast('초기화했습니다.'); render(); } }
+
+function esc(s){ return (''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+/* ============================================================================
+   4-B. 원격계층(DBR) — remote 모드에서 Supabase Edge Function 'api' 호출.
+     · 로그인은 이름+번호 대조(edge_login) → 서명 토큰 → sessionStorage.
+     · 학생·계정·응답은 anon 직접접근 불가(RLS 차단) — 이 함수를 통해서만.
+     · 로컬(?demo=1)에서는 이 계층을 쓰지 않고 기존 브라우저 저장 로직으로 동작.
+   ========================================================================== */
+var TOKENKEY='biocareer_token';
+function apiCall(action, params){
+  return fetch(DBCONF.url+'/functions/v1/api', {
+    method:'POST',
+    headers:{'Authorization':'Bearer '+DBCONF.anon, 'Content-Type':'application/json'},
+    body:JSON.stringify(Object.assign({action:action, token:sessionStorage.getItem(TOKENKEY)||''}, params||{}))
+  }).then(function(r){ return r.json().then(function(j){ return {status:r.status, j:j}; }); });
+}
+function mapStudent(s){ return {id:s.id, name:s.name, no:s.no, klass:s.klass, earlyEmployed:!!s.early_employed, earlyCompany:s.early_company||'', consent: s.consent_at?{agreed:true, at:s.consent_at}:undefined}; }
+function mapResp(r){ return {id:r.id, student_id:r.student_id, klass:r.klass, track:r.track, answers:r.answers||{}, submitted_at:r.submitted_at}; }
+function applyBootstrap(d){
+  if(d.classes && d.classes.length){ CLASSES = d.classes.map(function(c){ return {id:c.id, prof:c.prof||''}; }); }
+  DB.d.students  = (d.students||[]).map(mapStudent);
+  DB.d.responses = (d.responses||[]).map(mapResp);
+  DB.d.interviews = DB.d.interviews||[];
+}
+function doLoginRemote(role, nm, no){
+  if(!nm||!no){ toast('이름과 '+(role==='prof'?'교번':'학번')+'을 넣어 주세요.'); return; }
+  toast('로그인 중…');
+  fetch(DBCONF.url+'/functions/v1/api', {
+    method:'POST', headers:{'Authorization':'Bearer '+DBCONF.anon,'Content-Type':'application/json'},
+    body:JSON.stringify({action:'login', role:role, name:nm, num:no})
+  }).then(function(r){ return r.json().then(function(j){ return {s:r.status, j:j}; }); })
+  .then(function(res){
+    if(!res.j || !res.j.ok){ toast((res.j&&res.j.error)||'로그인에 실패했습니다.'); return; }
+    sessionStorage.setItem(TOKENKEY, res.j.token);
+    var user=res.j.user;
+    return apiCall('bootstrap',{}).then(function(bs){
+      if(bs.status!==200){ toast('데이터를 불러오지 못했습니다.'); return; }
+      applyBootstrap(bs.j);
+      if(role==='prof'){ SESS={role:'prof', student:null, prof:{name:user.name, num:'', klass:user.klass, role:user.role}, classView:'ALL'}; }
+      else { var st=DB.d.students.filter(function(s){return s.id===user.id;})[0]||mapStudent({id:user.id,name:user.name,no:user.no,klass:user.klass}); SESS={role:'student', student:st, prof:null, classView:'ALL'}; }
+      go('hub');
+    });
+  }).catch(function(){ toast('서버 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.'); });
+}
+/* 변경 후 서버 기준으로 다시 로드(권한·id 정합성) */
+function refreshRemote(){ return apiCall('bootstrap',{}).then(function(bs){ if(bs.status===200){ applyBootstrap(bs.j); render(); } }); }
+/* 원격 쓰기 — 실패 시 안내 + 재동기화 */
+function remoteWrite(action, params, okMsg){
+  apiCall(action, params).then(function(res){
+    if(!res.j || res.j.ok!==true){ toast((res.j&&res.j.error)||'저장에 실패했습니다.'); refreshRemote(); return; }
+    if(okMsg) toast(okMsg);
+    refreshRemote();
+  }).catch(function(){ toast('서버 연결 실패 — 다시 시도해 주세요.'); });
+}
+
+/* ============================================================================
+   5. 시작
+   ========================================================================== */
+if(MODE==='local'){ PROFS = DEMO_SEED.profs; }   /* ?demo=1 로컬 테스트 계정 */
+DB.load(); DB.seed(); render();
+</script>
+</body>
+</html>
