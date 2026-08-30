@@ -708,20 +708,22 @@ function topbar(){
   } else {
     var p=SESS.prof||{};
     mid = '🟢 '+(isSuper()?'슈퍼관리자':'관리자')+' '+esc(p.name)+' · 담당 '+p.klass+'반';
+    /* 「명단 관리」는 활동과 독립된 전역 메뉴 — 로그아웃 바로 왼쪽, 교수(슈퍼+관리자)에게만 노출 */
     right = '<button class="btn sm gray" onclick="go(\'hub\')">활동 목록</button>'+
+            '<button class="btn sm gray" onclick="go(\'roster\')">명단 관리</button>'+
             '<button class="btn sm gray" onclick="logout()">로그아웃</button>';
-    /* 반 선택 — 교수 3명 모두 전체 열람 가능 (활동 안에서만 표시) */
+    /* 반 선택 — 활동·명단 화면에서 표시(활동목록 hub에서는 숨김). 교수 3명 모두 전체 열람 가능 */
     if(VIEW!=='hub'){
-      /* 반 선택 탭 — 어느 반을 볼지 (상단) */
       sel = '<div class="clsseg">'+['ALL','F1','F2','F3'].map(function(c){
         return '<button class="'+(viewClass()===c?'on':'')+'" onclick="setClassView(\''+c+'\')">'+(c==='ALL'?'전체':c)+'</button>';
       }).join('')+'</div>';
-      /* 하위 화면 탭 — 무엇을 볼지 (대시보드/트랙그룹/명단). 카드(sc:)는 트랙그룹 계열로 표시 */
+    }
+    /* 하위 화면 탭 — 「활동(진로설문)」 내부에서만: 대시보드/트랙 그룹. 명단은 상단바 전역 메뉴로 분리됨. 카드(sc:)는 트랙그룹 계열 */
+    if(VIEW==='dash' || VIEW==='groups' || VIEW.indexOf('sc:')===0){
       var cur=(VIEW.indexOf('sc:')===0)?'groups':VIEW;
       subnav = '<div class="subnav">'+
         '<button class="'+(cur==='dash'?'on':'')+'" onclick="go(\'dash\')">대시보드</button>'+
         '<button class="'+(cur==='groups'?'on':'')+'" onclick="go(\'groups\')">트랙 그룹</button>'+
-        '<button class="'+(cur==='roster'?'on':'')+'" onclick="go(\'roster\')">명단</button>'+
       '</div>';
     }
   }
