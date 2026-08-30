@@ -625,9 +625,12 @@ function surveyRows(){
       var item=Q.filter(function(x){ return x.id===id; })[0];
       var visible = !item.show || item.show(a);
       var v = (r && !isEarly(st) && visible)? a[id] : undefined;
-      if(v===undefined||v===null||v==='') line.push('');
-      else if(Array.isArray(v)) line.push(v.join(', '));
-      else line.push(v);
+      var cell;
+      if(v===undefined||v===null||v==='') cell='';
+      else if(Array.isArray(v)) cell=v.join(', ');
+      else cell=v;
+      if(r && !isEarly(st) && visible){ var ev=a.etc&&a.etc[id]; if(ev&&String(ev).trim()!==''){ cell=(cell?cell+' · ':'')+'기타(직접입력): '+ev; } }
+      line.push(cell);
     });
     rows.push(line);
   });
@@ -665,7 +668,7 @@ var Q = [
   {id:'B5', q:'희망 연봉 구간(신입)은?', type:'single', opt:['2,400만 미만','2,400~2,800','2,800~3,200','3,200~3,600','3,600만 이상','모름'], show:function(a){return hasTrack(a,'취업');}},
   {id:'B6', q:'희망 기업 형태는? (복수)', type:'multi', opt:['대기업','중견','중소','공기업·공공','연구소','스타트업','외국계'], show:function(a){return hasTrack(a,'취업');}},
   {id:'B7', q:'구체적으로 가고 싶은 기업명 (있으면, 최대 3개·쉼표로)', type:'text', optional:true, show:function(a){return hasTrack(a,'취업');}},
-  {id:'B8', q:'현재 보유한 전공 관련 자격증은? (복수)', type:'multi', opt:['화학분석기능사','바이오화학제품제조 산업기사','위험물기능사','위험물산업기사','바이오공정기능사','위생사','식품산업기사','컴퓨터활용능력 2급','컴퓨터활용능력 1급','없음','기타'], show:function(a){return hasTrack(a,'취업');}},
+  {id:'B8', q:'현재 보유한 전공 관련 자격증은? (복수)', type:'multi', opt:['화학분석기능사','바이오화학제품제조 산업기사','위험물기능사','위험물산업기사','바이오공정기능사','위생사','식품산업기사','컴퓨터활용능력 2급','컴퓨터활용능력 1급','운전면허증','없음','기타'], show:function(a){return hasTrack(a,'취업');}},
   {id:'B9', q:'준비 중인 전공 관련 자격증은? (없으면 없음)', type:'text', reqMsg:'없으면 \'없음\'이라고 적어 주세요.', show:function(a){return hasTrack(a,'취업');}},
   {id:'B10', q:'어학 성적 보유·준비 현황은?', type:'single', opt:['보유(점수 입력)','준비 중','계획 없음'], show:function(a){return hasTrack(a,'취업');}},
   {id:'B10a', q:'어학 종류·점수 (예: TOEIC 750)', type:'text', show:function(a){return hasTrack(a,'취업') && a.B10==='보유(점수 입력)';}},
@@ -716,6 +719,7 @@ var loginRole = 'student';
 var draft = {};   // 설문 작성 중 응답
 var stepIdx = 0;  // 설문 위저드 현재 단계(0-based)
 var invalid = {}; // 미응답으로 표시된 문항 id 집합
+var etcInvalid = {}; // '기타' 선택 후 내용 미입력으로 표시된 문항 id 집합
 var showValidateMsg = false; // 상단 안내 배너 표시 여부
 var submitting = false; // remote 제출 진행 중(중복 제출·경쟁 조건 방지)
 
@@ -964,11 +968,12 @@ function isEmptyAns(item){
 }
 function validateStep(){
   var steps=activeSteps(); var cur=steps[stepIdx];
-  invalid={};
+  invalid={}; etcInvalid={};
   Q.forEach(function(item){
     if(item.sec) return;
     if(!stepKeyMatch(item.id, cur.key)) return;
     if(item.show && !item.show(draft)) return;   // 조건부 숨김 문항은 검사 제외
+    if(hasEtcOpt(item) && etcSelected(item, draft) && etcEmpty(item.id)){ invalid[item.id]=true; etcInvalid[item.id]=true; return; }
     if(item.optional) return;                     // 선택 문항은 비워도 통과
     if(isEmptyAns(item)) invalid[item.id]=true;
   });
@@ -988,6 +993,14 @@ function nextStep(){
   if(stepIdx<steps.length-1){ stepIdx++; render(); window.scrollTo(0,0); }
 }
 function prevStep(){ showValidateMsg=false; invalid={}; if(stepIdx>0){ stepIdx--; render(); window.scrollTo(0,0); } }
+/* ── '기타' 직접입력 공통 처리 — opt에 '기타'가 있는 모든 문항에 자동 적용 ── */
+function hasEtcOpt(item){ return !!(item && item.opt && item.opt.indexOf('기타')>=0); }
+function etcSelected(item, a){ var v=a[item.id]; if(item.type==='multi') return !!(v && v.indexOf && v.indexOf('기타')>=0); return v==='기타'; }
+function etcEmpty(id){ var e=draft.etc&&draft.etc[id]; return !(e && String(e).trim()!==''); }
+/* 결과 표시용 — 다중선택 값(+기타 직접입력) */
+function joinEtc(a, id){ var v=a[id]; var e=a&&a.etc&&a.etc[id]; var hasE=!!(e&&String(e).trim()!==''); var s; if(Array.isArray(v)){ var list=hasE? v.filter(function(x){return x!=='기타';}) : v; s=list.join(', '); } else { s=(v==null?'':v); } if(hasE) s=s+(s?' · ':'')+'기타(직접입력): '+e; return s||'—'; }
+/* 결과 표시용 — 단일선택 값(+기타 직접입력) */
+function oneEtc(a, id){ var v=a[id]; var e=a&&a.etc&&a.etc[id]; if(v==='기타' && e && String(e).trim()!=='') return '기타(직접입력): '+e; return (v==null||v==='')?'—':v; }
 function renderQ(item){
   var v=draft[item.id];
   var bad = !!invalid[item.id];
@@ -1013,16 +1026,27 @@ function renderQ(item){
   } else if(item.type==='num'){
     h+='<input type="number" step="0.01" value="'+(v!=null?v:'')+'" oninput="setText(\''+item.id+'\',this.value)" style="max-width:160px">';
   }
+  if(hasEtcOpt(item) && etcSelected(item, draft)){
+    var ev=(draft.etc&&draft.etc[item.id])||'';
+    h+='<div style="margin-top:8px"><input type="text" value="'+(ev?esc(ev):'')+'" placeholder="\'기타\'를 선택하셨습니다 — 내용을 직접 입력하세요" oninput="setEtc(\''+item.id+'\',this.value)">';
+    if(etcInvalid[item.id]) h+='<div class="qerr">\'기타\' 내용을 입력해 주세요.</div>';
+    h+='</div>';
+  }
   if(bad) h+='<div class="qerr">'+(item.reqMsg||'이 문항에 응답해 주세요.')+'</div>';
   return h+'</div>';
 }
-function setSingle(id,val){ draft[id]=val; delete invalid[id]; render(); }
+function setSingle(id,val){ draft[id]=val; delete invalid[id]; delete etcInvalid[id]; if(val!=='기타' && draft.etc) delete draft.etc[id]; render(); }
 function setText(id,val){ draft[id]=val; if((''+val).trim()!=='') delete invalid[id]; }   // 텍스트는 재렌더 안 함(커서 유지)
+function setEtc(id,val){ if(!draft.etc) draft.etc={}; draft.etc[id]=val; if((''+val).trim()!==''){ delete invalid[id]; delete etcInvalid[id]; } }   // 기타 직접입력 — 재렌더 안 함(커서 유지)
 function toggleMulti(id,val){
   var a=draft[id]||[]; var i=a.indexOf(val);
   if(i>=0) a.splice(i,1); else a.push(val);
   draft[id]=a;
   if(a.length) delete invalid[id];
+  if(val==='기타'){                          // 기타 체크/해제 시 입력란 표시·숨김
+    if(a.indexOf('기타')<0){ if(draft.etc) delete draft.etc[id]; delete etcInvalid[id]; }
+    render();
+  }
 }
 function submitSurvey(){
   var bad=validateStep();
@@ -1059,28 +1083,28 @@ function viewProfileCard(sid, self){
   rows+=kv('진로 트랙','<span class="pill '+(TRACK[r.track]||'t-none')+'">'+r.track+'</span>'+(a.A2?' ('+join(a.A2)+')':''));
   rows+=kv('확신 정도', a.A4? a.A4+' / 5':'—');
   if(hasTrack(a,'취업')){
-    rows+=kv('희망 분야', join(a.B1));
-    rows+=kv('희망 직무', join(a.B2));
-    rows+=kv('희망 지역', join(a.B3));
+    rows+=kv('희망 분야', joinEtc(a,'B1'));
+    rows+=kv('희망 직무', joinEtc(a,'B2'));
+    rows+=kv('희망 지역', joinEtc(a,'B3'));
     rows+=kv('기업 형태', join(a.B6));
     rows+=kv('희망 기업', a.B7||'—');
   }
   if(hasTrack(a,'편입')){
     rows+=kv('편입 유형', a.C1||'—');
-    rows+=kv('편입 계열', a.C3||'—');
+    rows+=kv('편입 계열', oneEtc(a,'C3'));
     rows+=kv('편입 학과', a.C4||'—');
     rows+=kv('희망 학교', a.C5||'—');
   }
   if(hasTrack(a,'창업')){
     rows+=kv('창업 단계', a.F1||'—');
-    rows+=kv('창업 분야', join(a.F2));
+    rows+=kv('창업 분야', joinEtc(a,'F2'));
     rows+=kv('아이템', a.F3||'—');
-    rows+=kv('필요 지원', join(a.F5));
+    rows+=kv('필요 지원', joinEtc(a,'F5'));
   }
   rows+=kv('대학원', a.D1||'—');
   rows+=kv('준비도(자기평가)', a.E1? a.E1+' / 5':'—');
   rows+=kv('가장 큰 고민', a.E2||'—');
-  rows+=kv('필요한 도움', join(a.E3));
+  rows+=kv('필요한 도움', joinEtc(a,'E3'));
   return '<div class="card" id="profileCard"><h2>진로 프로필 카드 — '+esc(st.name)+'</h2>'+
     '<div class="prof-card"><div class="kv">'+rows+'</div></div>'+
     '<p class="muted" style="margin-top:10px">제출 '+r.submitted_at+'</p>'+
@@ -1110,38 +1134,38 @@ function profileText(sid){
   /* 진로 방향 + 확신도 (+ 병행 트랙) */
   var dir=r.track + (a.A2&&a.A2.length? ' ('+J(a.A2)+')':'') + (a.A4? ' · 확신도 '+a.A4+'/5':'');
   L.push('진로 방향: '+dir);
-  if(a.A5) line('미정 사유', a.A5);
+  if(a.A5) line('미정 사유', oneEtc(a,'A5'));
   if(hasTrack(a,'취업')){
-    line('희망 분야', J(a.B1));
-    line('희망 직무', J(a.B2));
-    var reg=J(a.B3)+(a.B4&&a.B4.length? ' / 피하고 싶은 지역: '+J(a.B4):'');
+    line('희망 분야', joinEtc(a,'B1'));
+    line('희망 직무', joinEtc(a,'B2'));
+    var reg=joinEtc(a,'B3')+(a.B4&&a.B4.length? ' / 피하고 싶은 지역: '+joinEtc(a,'B4'):'');
     line('희망 근무지역', reg);
     line('희망 연봉', a.B5);
     line('희망 기업형태', J(a.B6));
     line('희망 기업', a.B7);
-    line('보유 자격증', J(a.B8));
+    line('보유 자격증', joinEtc(a,'B8'));
     line('준비 중 자격증', a.B9);
     line('어학', a.B10==='보유(점수 입력)'? (a.B10a||'보유') : a.B10);
     line('인턴·현장실습', a.B11==='있음'? (a.B11a||'있음') : a.B11);
   }
   if(hasTrack(a,'편입')){
-    var cty=a.C1||''; if(a.C1==='연계편입'&&a.C1a) cty+=' — '+a.C1a; if(a.C1==='학사편입'&&a.C2) cty+=' ('+a.C2+')';
+    var cty=a.C1||''; if(a.C1==='연계편입'&&a.C1a) cty+=' — '+oneEtc(a,'C1a'); if(a.C1==='학사편입'&&a.C2) cty+=' ('+oneEtc(a,'C2')+')';
     line('편입 유형', cty);
-    line('편입 계열', a.C3);
+    line('편입 계열', oneEtc(a,'C3'));
     line('희망 편입 학과', a.C4);
     line('희망 편입 학교/지역', a.C5);
-    line('편입 후 목표', a.C6);
+    line('편입 후 목표', oneEtc(a,'C6'));
     line('편입 준비 현황', J(a.C7));
     line('편입 어학', a.C8==='보유(점수 입력)'? (a.C8a||'보유') : a.C8);
   }
   if(hasTrack(a,'창업')){
     line('창업 준비단계', a.F1);
-    line('창업 분야', J(a.F2));
+    line('창업 분야', joinEtc(a,'F2'));
     line('창업 아이템', a.F3);
     line('창업 형태', a.F4);
-    line('필요한 지원', J(a.F5));
+    line('필요한 지원', joinEtc(a,'F5'));
     line('창업 준비현황', a.F6);
-    line('관심 지원사업', J(a.F7));
+    line('관심 지원사업', joinEtc(a,'F7'));
     line('창업 경험', a.F8==='있음'? (a.F8a||'있음') : a.F8);
   }
   if(a.D1==='희망'){
@@ -1150,7 +1174,7 @@ function profileText(sid){
   } else if(a.D1){ line('대학원 진학', a.D1); }
   line('진로 준비도', a.E1? a.E1+'/5':'');
   line('가장 큰 고민', a.E2);
-  line('필요한 도움', J(a.E3));
+  line('필요한 도움', joinEtc(a,'E3'));
   L.push('(제출: '+r.submitted_at+')');
   return L.join('\n');
 }
