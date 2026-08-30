@@ -196,11 +196,13 @@ var DB = {
   save:function(){ try{ localStorage.setItem(LSKEY, JSON.stringify(this.d)); }catch(e){} },
   seed:function(){
     if(this.d.students.length) return;
-    if(MODE!=='local') return;                 /* remote: 서버(Supabase)에서 로드 — 별도 연동 예정 */
+    if(this.d.seeded) return;                  /* 한 번 시드/삭제된 뒤에는 다시 채우지 않음(전체·반별 삭제가 새로고침 후에도 유지되도록) */
+    if(MODE!=='local') return;                 /* remote: 서버(Supabase)에서 로드 */
     var roster = (typeof DEMO_SEED!=='undefined') ? DEMO_SEED.roster : SEED_ROSTER;
     this.d.students = roster.map(function(s,i){
       return { id:'st'+(i+1), name:s.name, no:s.no, klass:s.klass||'F2' };
     });
+    this.d.seeded = true;
     this.save();
   },
   student:function(name,no){
