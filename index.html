@@ -391,12 +391,12 @@ function extractPdf(file,done){
   });
 }
 /* 화면 상태 + 핸들러 */
-var regState={ open:false, rows:[] };
+var regState={ open:false, rows:[], klass:'F1' };  /* klass: 등록할 반 — 재렌더로 리셋되지 않게 상태로 보관 */
 var addOpen=false, editSid=null;
 function toggleAddForm(){ if(!isSuper())return; addOpen=!addOpen; render(); }
 function submitAddStudent(){
   if(!isSuper()){ toast('슈퍼관리자만 가능합니다.'); return; }
-  var nm=rval('addName'), no=rval('addNo'), kl=rval('addKlass')||'F1';
+  var nm=rval('addName'), no=rval('addNo'), kl=rval('addKlass')||((viewClass()!=='ALL')?viewClass():(CLASSES[0]?CLASSES[0].id:'F1'));
   if(!nm||!no){ toast('이름과 학번을 입력하세요.'); return; }
   if(MODE==='remote'){ addOpen=false; render(); remoteWrite('addStudent',{name:nm,no:no,klass:kl}, '학생을 추가했습니다.'); return; }
   var r=addStudent(nm, no, kl);
@@ -445,7 +445,8 @@ function confirmDeleteAll(){
     DB.d.students=[]; DB.d.responses=[]; DB.save(); toast('전체 명단('+n+'명)을 삭제했습니다.'); render();
   }
 }
-function toggleReg(){ if(!isSuper())return; regState.open=!regState.open; render(); }
+function toggleReg(){ if(!isSuper())return; regState.open=!regState.open; if(regState.open){ regState.klass=(viewClass()!=='ALL')?viewClass():(CLASSES[0]?CLASSES[0].id:'F1'); regState.rows=[]; } render(); }
+function regSetKlass(v){ regState.klass=v; }   /* 드롭다운 onchange — 값만 저장(재렌더 안 함) */
 function regLoadPaste(){
   var list=parseRoster(rval('regPaste'));
   if(!list.length){ toast('이름·학번을 찾지 못했습니다. 「이름  학번」 형식으로 붙여넣어 주세요.'); return; }
@@ -472,7 +473,7 @@ function regEditRow(i,field,v){ if(regState.rows[i]) regState.rows[i][field]=v; 
 function regDelRow(i){ regState.rows.splice(i,1); render(); }
 function regSubmit(){
   if(!regState.rows.length){ toast('불러온 명단이 없습니다.'); return; }
-  var kl=rval('regKlass')||'F1';
+  var kl=regState.klass||'F1';   /* 화면에서 선택한 '등록할 반' (F1 기본값으로 슬그머니 떨어지지 않게 상태값 사용) */
   var mode=(document.querySelector('input[name=regMode]:checked')||{}).value||'append';
   if(mode==='overwrite'){
     var existing=DB.d.students.filter(function(s){return s.klass===kl;}).length;
@@ -1340,7 +1341,7 @@ function superRosterTools(){
   if(regState.open){
     h+='<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">'+
       '<div class="row" style="align-items:flex-end">'+
-        '<span><div class="hint">등록할 반</div><select id="regKlass">'+classOptions(viewClass()==='ALL'?'F1':viewClass())+'</select></span>'+
+        '<span><div class="hint">등록할 반</div><select id="regKlass" onchange="regSetKlass(this.value)">'+classOptions(regState.klass)+'</select></span>'+
         '<span><div class="hint">출석부 PDF 또는 CSV(자동 추출)</div><input type="file" accept=".pdf,.csv,.txt" onchange="regPickFile(this)"></span>'+
       '</div>'+
       '<div class="hint" style="margin-top:8px">또는 명단 붙여넣기 — 한 줄에 「이름　학번」 또는 「학번　이름」 (엑셀·학사시스템에서 복사).</div>'+
