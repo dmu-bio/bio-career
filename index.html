@@ -418,6 +418,31 @@ function confirmDeleteStudent(sid){
     deleteStudent(sid); toast('삭제했습니다.'); render();
   }
 }
+/* 반별 삭제 — 현재 선택된 반(F1/F2/F3)의 학생 전원 (슈퍼관리자 전용) */
+function confirmDeleteClass(){
+  if(!isSuper())return;
+  var scope=viewClass();
+  if(scope==='ALL'){ toast('전체 보기입니다. 특정 반을 고르거나 [전체 삭제]를 쓰세요.'); return; }
+  var studs=DB.d.students.filter(function(s){return s.klass===scope;});
+  if(!studs.length){ toast(scope+'반에 삭제할 학생이 없습니다.'); return; }
+  if(confirm(scope+'반 학생 '+studs.length+'명 전원과 그 설문 응답이 모두 삭제됩니다.\n되돌릴 수 없습니다. 계속할까요?')){
+    if(MODE==='remote'){ remoteWrite('deleteClass',{scope:scope}, scope+'반 명단('+studs.length+'명)을 삭제했습니다.'); return; }
+    var ids={}; studs.forEach(function(s){ids[s.id]=1;});
+    DB.d.students=DB.d.students.filter(function(s){return s.klass!==scope;});
+    DB.d.responses=DB.d.responses.filter(function(r){return !ids[r.student_id];});
+    DB.save(); toast(scope+'반 명단('+studs.length+'명)을 삭제했습니다.'); render();
+  }
+}
+/* 전체 삭제 — F1·F2·F3 모든 반 학생 전원 (슈퍼관리자 전용) */
+function confirmDeleteAll(){
+  if(!isSuper())return;
+  var n=DB.d.students.length;
+  if(!n){ toast('삭제할 학생이 없습니다.'); return; }
+  if(confirm('전체 '+n+'명(F1·F2·F3 모든 반) 학생 전원과 그 설문 응답이 모두 삭제됩니다.\n되돌릴 수 없습니다. 계속할까요?')){
+    if(MODE==='remote'){ remoteWrite('deleteClass',{scope:'ALL'}, '전체 명단('+n+'명)을 삭제했습니다.'); return; }
+    DB.d.students=[]; DB.d.responses=[]; DB.save(); toast('전체 명단('+n+'명)을 삭제했습니다.'); render();
+  }
+}
 function toggleReg(){ if(!isSuper())return; regState.open=!regState.open; render(); }
 function regLoadPaste(){
   var list=parseRoster(rval('regPaste'));
@@ -1295,6 +1320,12 @@ function superRosterTools(){
     '<div class="row" style="margin-top:8px">'+
       '<button class="btn sm" onclick="toggleReg()">📄 출석부/명단 등록</button>'+
       '<button class="btn sm gray" onclick="toggleAddForm()">＋ 학생 추가</button>'+
+    '</div>'+
+    /* 위험 구역 — 반별/전체 삭제(슈퍼관리자 전용, superRosterTools 안이라 이미 isSuper 가드됨) */
+    '<div class="row" style="margin-top:8px;align-items:center">'+
+      '<span class="hint" style="color:var(--bad)">⚠ 되돌릴 수 없음:</span>'+
+      (viewClass()!=='ALL'? '<button class="btn sm" style="background:var(--bad)" onclick="confirmDeleteClass()">🗑 이 반('+viewClass()+') 삭제</button>':'')+
+      '<button class="btn sm" style="background:var(--bad)" onclick="confirmDeleteAll()">🗑 전체 삭제</button>'+
     '</div>';
   if(addOpen){
     h+='<div class="row" style="margin-top:10px;align-items:flex-end">'+
