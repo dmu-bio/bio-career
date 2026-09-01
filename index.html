@@ -932,6 +932,7 @@ function viewSurvey(){
   if(stepIdx>=steps.length) stepIdx=steps.length-1;
   if(stepIdx<0) stepIdx=0;
   var cur=steps[stepIdx];
+  var editingSurvey = SESS.role==='student' && SESS.student && !!DB.response(SESS.student.id);
   var head=steps.map(function(s,i){
     var cls='wstep'+(i===stepIdx?' on':(i<stepIdx?' done':''));
     return '<div class="'+cls+'">'+(i+1)+'. '+s.name+'</div>';
@@ -939,7 +940,8 @@ function viewSurvey(){
   var h='<div class="card"><div class="wizard-head">'+head+'</div>'+
         '<div class="wprog">'+(stepIdx+1)+' / '+steps.length+' 단계</div>'+
         '<div class="stephead">'+cur.name+'</div>'+
-        '<p class="muted">'+cur.intro+'</p>';
+        '<p class="muted">'+cur.intro+'</p>'+
+        (editingSurvey?'<div class="note" style="margin:8px 0;background:#eef4ff;border-color:#c9dbff">✏️ 이미 제출한 응답을 <b>수정하는 중</b>입니다. 값을 바꾼 뒤 마지막 단계에서 <b>[수정 저장]</b>을 누르면 새 내용으로 저장됩니다.</div>':'');
   var nBad=Object.keys(invalid).length;
   if(showValidateMsg && nBad){
     h+='<div class="validbanner">⚠️ 아직 답하지 않은 문항이 있습니다 ('+nBad+'개). 붉게 표시된 문항을 채워 주세요.</div>';
@@ -958,7 +960,7 @@ function viewSurvey(){
         ? '<button class="btn gray" onclick="prevStep()">← 이전</button>'
         : '<button class="btn gray" onclick="go(\'home\')">취소</button>')+'</div>'+
       '<div>'+(last
-        ? '<button class="btn" onclick="submitSurvey()">제출</button>'
+        ? '<button class="btn" onclick="submitSurvey()">'+(editingSurvey?'수정 저장':'제출')+'</button>'
         : '<button class="btn" onclick="nextStep()">다음 →</button>')+'</div>'+
      '</div></div>';
   return h;
@@ -1500,7 +1502,9 @@ function doLoginRemote(role, nm, no){
       if(bs.status!==200){ toast('데이터를 불러오지 못했습니다.'); return; }
       applyBootstrap(bs.j);
       if(role==='prof'){ SESS={role:'prof', student:null, prof:{name:user.name, num:'', klass:user.klass, role:user.role}, classView:'ALL'}; }
-      else { var st=DB.d.students.filter(function(s){return s.id===user.id;})[0]||mapStudent({id:user.id,name:user.name,no:user.no,klass:user.klass}); SESS={role:'student', student:st, prof:null, classView:'ALL'}; }
+      else { var st=DB.d.students.filter(function(s){return s.id===user.id;})[0]||mapStudent({id:user.id,name:user.name,no:user.no,klass:user.klass}); SESS={role:'student', student:st, prof:null, classView:'ALL'};
+        /* 제출한 응답을 수정할 수 있도록, 서버(bootstrap)에서 불러온 기존 응답을 설문 초안에 채운다 */
+        draft = (DB.response(st.id)||{}).answers ? JSON.parse(JSON.stringify(DB.response(st.id).answers)) : {}; }
       go('hub');
     });
   }).catch(function(){ toast('서버 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.'); });
