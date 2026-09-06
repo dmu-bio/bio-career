@@ -155,7 +155,7 @@ var SEED_PROFS = [
    1차만 실제 화면(진로설문)과 연결·활성. 2~10차는 이름만, 비활성(준비 중). */
 var ACTIVITIES = [
   { n:1, name:'진로 설문', key:'survey', active:true },
-  { n:2, name:'2차 활동', active:false },
+  { n:2, name:'2차 활동', key:'assets', active:false },
   { n:3, name:'3차 활동', active:false },
   { n:4, name:'4차 활동', active:false },
   { n:5, name:'5차 활동', active:false },
@@ -194,7 +194,7 @@ function classLabel(c){ return c==='ALL'?'전체':(c+'('+profOfClass(c)+')'); }
    ========================================================================== */
 var LSKEY='biocareer_demo_v4';  /* 데모본 전용 저장키(반+동의+명단관리) — 실명본과 분리 */
 var DB = {
-  d:{ students:[], responses:[], interviews:[] },
+  d:{ students:[], responses:[], interviews:[], activity2:[] },
   load:function(){ try{ var r=localStorage.getItem(LSKEY); if(r) this.d=JSON.parse(r); }catch(e){} },
   save:function(){ try{ localStorage.setItem(LSKEY, JSON.stringify(this.d)); }catch(e){} },
   seed:function(){
@@ -211,6 +211,14 @@ var DB = {
     return this.d.students.filter(function(s){ return norm(s.name)===nm && s.no===no; })[0];
   },
   response:function(sid){ return this.d.responses.filter(function(r){return r.student_id===sid;})[0]; },
+  activity2Of:function(sid){ return (this.d.activity2||[]).filter(function(r){return r.student_id===sid;})[0]; },
+  saveActivity2Local:function(sid, klass, payload){
+    if(!this.d.activity2) this.d.activity2=[];
+    var r=this.activity2Of(sid);
+    if(r){ r.assets=payload.assets; r.pros=payload.pros; r.cons=payload.cons; r.photos=payload.photos; r.klass=klass; r.submitted_at=now(); }
+    else this.d.activity2.push({ id:'a2_'+(this.d.activity2.length+1), student_id:sid, klass:klass, assets:payload.assets, pros:payload.pros, cons:payload.cons, photos:payload.photos, submitted_at:now() });
+    this.save();
+  },
   saveResponse:function(sid, track, answers){
     var r=this.response(sid);
     if(r){ r.track=track; r.answers=answers; r.submitted_at=now(); delete r.demo; }  /* 실제 응답으로 덮으면 demo 플래그 해제 */
@@ -691,6 +699,8 @@ var SESS = { role:null, student:null, prof:null, classView:'ALL' };   // role: '
 var VIEW = 'login';
 var loginRole = 'student';
 var draft = {};   // 설문 작성 중 응답
+var a2draft = a2Empty();   // 2차 활동 작성 중 응답
+var consentNext = 'home';  // 개인정보 동의 후 이동할 화면(1차=home, 2차=a2)
 var stepIdx = 0;  // 설문 위저드 현재 단계(0-based)
 var invalid = {}; // 미응답으로 표시된 문항 id 집합
 var etcInvalid = {}; // '기타' 선택 후 내용 미입력으로 표시된 문항 id 집합
@@ -711,12 +721,15 @@ function render(){
     if(VIEW==='consent') el.innerHTML = bar+viewConsent();
     else if(VIEW==='home') el.innerHTML = bar+viewStudentHome();
     else if(VIEW==='survey') el.innerHTML = bar+viewSurvey();
+    else if(VIEW==='a2') el.innerHTML = bar+viewA2Form();
     else if(VIEW==='card') el.innerHTML = bar+viewProfileCard(SESS.student.id, true);
   } else {
     if(VIEW==='dash') el.innerHTML = bar+viewDash();
     else if(VIEW==='groups') el.innerHTML = bar+viewGroups();
     else if(VIEW==='roster') el.innerHTML = bar+viewRoster();
     else if(VIEW.indexOf('sc:')===0) el.innerHTML = bar+viewProfileCard(VIEW.slice(3), false);
+    else if(VIEW==='a2list') el.innerHTML = bar+viewA2List();
+    else if(VIEW.indexOf('a2v:')===0) el.innerHTML = bar+viewA2Detail(VIEW.slice(4));
   }
 }
 
@@ -806,7 +819,7 @@ function viewConsent(){
 function agreeConsent(){
   var c=document.getElementById('consentChk');
   if(!c || !c.checked){ toast('동의하셔야 진로지도 활동에 참여할 수 있습니다.'); return; }
-  setConsent(SESS.student.id); toast('동의가 저장되었습니다.'); go('home');
+  setConsent(SESS.student.id); toast('동의가 저장되었습니다.'); go(consentNext||'home');
 }
 
 /* ---- 활동 허브 (로그인 후 첫 화면) ---- */
@@ -817,9 +830,10 @@ function viewHub(){
   var intro = isStudent
     ? '아래 활동 중 열려 있는 것을 눌러 진행하세요. 지금은 <b>1차 활동(진로 설문)</b>만 열려 있습니다.'
     : '활동을 눌러 관리 화면으로 들어갑니다. 지금은 <b>1차 활동(진로 설문)</b>만 열려 있습니다.'
-      + (isSuper()? ' <span class="hint">(슈퍼관리자 — 활동 활성화·구성 권한)</span>':'');
+      + (isSuper()? ' <span class="hint">(슈퍼관리자 — 각 활동의 [열기/닫기]로 학생 공개를 제어합니다)</span>':'');
   var cards = ACTIVITIES.map(function(act){
     var head='<span class="an">'+act.n+'차 활동</span>';
+    var adminTog = isSuper() ? '<div style="margin-top:8px"><button class="btn sm '+(act.active?'':'gray')+'" onclick="event.stopPropagation();toggleActivity('+act.n+')">'+(act.active?'✅ 열림 (닫기)':'🔒 잠김 (열기)')+'</button></div>' : '';
     if(act.active){
       var status='';
       if(isStudent){ status = exempt? '<div class="as"><span class="pill t-jobs">설문 면제</span></div>'
@@ -827,10 +841,10 @@ function viewHub(){
                                  : '<div class="as"><span class="pill t-jobs">진행하기</span></div>'); }
       else { status='<div class="as"><span class="pill t-jobs">관리</span></div>'; }
       return '<div class="actbtn on" onclick="openActivity('+act.n+')">'+head+
-        '<div class="at">'+esc(act.name)+'</div>'+status+'</div>';
+        '<div class="at">'+esc(act.name)+'</div>'+status+adminTog+'</div>';
     }
     return '<div class="actbtn locked" onclick="openActivity('+act.n+')">'+head+
-      '<div class="at">'+esc(act.name)+'</div><div class="lock">🔒</div><div class="as">준비 중</div></div>';
+      '<div class="at">'+esc(act.name)+'</div><div class="lock">🔒</div><div class="as">준비 중</div>'+adminTog+'</div>';
   }).join('');
   return '<div class="card"><h2>활동 목록</h2>'+
     '<p class="muted">'+intro+'</p>'+
@@ -841,9 +855,16 @@ function openActivity(n){
   if(!act || !act.active){ toast('아직 준비 중인 활동입니다.'); return; }
   if(act.key==='survey'){
     if(SESS.role!=='student'){ go('dash'); return; }
+    consentNext='home';
     if(isEarly(SESS.student)) go('home');                 /* 조기취업자 = 설문 면제(동의 불필요) */
     else if(!hasConsent(SESS.student)) go('consent');     /* 미동의 → 개인정보 동의 화면 먼저 */
     else go('home');
+  } else if(act.key==='assets'){
+    if(SESS.role!=='student'){ go('a2list'); return; }    /* 교수 = 2차 활동 제출 현황 */
+    a2draft = a2FromResponse(DB.activity2Of(SESS.student.id));   /* 재제출 프리필 */
+    consentNext='a2';
+    if(!hasConsent(SESS.student)) go('consent');          /* 미동의 → 개인정보 동의 먼저 */
+    else go('a2');
   }
 }
 
@@ -1410,6 +1431,198 @@ function toggleEarly(sid, on){ if(!canManage(stById(sid))){ toast('본인 반 �
 function setEarlyMemo(sid, val){ if(!canManage(stById(sid))) return; setEarly(sid, undefined, val); }  /* 텍스트는 재렌더 안 함(포커스 유지) */
 function resetDemo(){ if(confirm('입력된 설문 응답을 모두 지울까요? (수강생 명단·조기취업 표시는 유지)')){ DB.d.responses=[]; DB.d.interviews=[]; DB.save(); toast('초기화했습니다.'); render(); } }
 
+/* ============================================================================
+   2차 활동 — 본인 보유자산+사진, 장점3(이유·대표활동), 단점3(이유·보완방안)
+   서버 저장(remote)·브라우저 저장(local·?demo=1) 공통. 1차 설문과 별도 저장소.
+   ========================================================================== */
+var A2_MAXPHOTOS=10, A2_MAXEDGE=1024, A2_PERBYTES=350*1024, A2_TOTALBYTES=3300000;
+var a2invalid={}, a2showErr=false, a2view={ sid:null, row:null, loading:false };
+function a2Empty(){ return { assets:'', pros:[{t:'',reason:'',act:''},{t:'',reason:'',act:''},{t:'',reason:'',act:''}], cons:[{t:'',reason:'',fix:''},{t:'',reason:'',fix:''},{t:'',reason:'',fix:''}], photos:[] }; }
+function a2FromResponse(r){
+  var d=a2Empty(); if(!r) return d;
+  d.assets=r.assets||'';
+  for(var i=0;i<3;i++){
+    if(r.pros&&r.pros[i]) d.pros[i]={t:r.pros[i].t||'',reason:r.pros[i].reason||'',act:r.pros[i].act||''};
+    if(r.cons&&r.cons[i]) d.cons[i]={t:r.cons[i].t||'',reason:r.cons[i].reason||'',fix:r.cons[i].fix||''};
+  }
+  d.photos=(r.photos&&r.photos.slice)? r.photos.slice() : [];
+  return d;
+}
+function setA2Assets(v){ a2draft.assets=v; if((''+v).trim()!=='') delete a2invalid['assets']; }
+function setA2Pro(i,f,v){ a2draft.pros[i][f]=v; if((''+v).trim()!=='') delete a2invalid['pro'+i+f]; }
+function setA2Con(i,f,v){ a2draft.cons[i][f]=v; if((''+v).trim()!=='') delete a2invalid['con'+i+f]; }
+/* 사진 압축 — 캔버스로 최대변 1024px·JPEG 품질 자동조절(장당 350KB 이하). 폰 대용량 업로드 버그 방지 */
+function a2Compress(file, done){
+  if(!/^image\//.test(file.type||'')){ done(null,'이미지 파일이 아닙니다.'); return; }
+  var fr=new FileReader();
+  fr.onerror=function(){ done(null,'파일을 읽지 못했습니다.'); };
+  fr.onload=function(){
+    var img=new Image();
+    img.onerror=function(){ done(null,'이미지를 열 수 없습니다.'); };
+    img.onload=function(){
+      var w=img.width||1, h=img.height||1, sc=Math.min(1, A2_MAXEDGE/Math.max(w,h));
+      var cw=Math.max(1,Math.round(w*sc)), ch=Math.max(1,Math.round(h*sc));
+      var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+      var url;
+      try{ var ctx=cv.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,cw,ch); ctx.drawImage(img,0,0,cw,ch);
+           var q=0.7; url=cv.toDataURL('image/jpeg',q);
+           while(url.length*0.75 > A2_PERBYTES && q>0.35){ q-=0.1; url=cv.toDataURL('image/jpeg',q); }
+      }catch(e){ done(null,'이미지 처리에 실패했습니다.'); return; }
+      done(url,null);
+    };
+    img.src=fr.result;
+  };
+  fr.readAsDataURL(file);
+}
+function a2TotalBytes(){ var t=0; a2draft.photos.forEach(function(p){ t+=p.length*0.75; }); return t; }
+function a2PickPhotos(input){
+  var files=input.files? Array.prototype.slice.call(input.files):[]; input.value='';
+  if(!files.length) return;
+  var room=A2_MAXPHOTOS - a2draft.photos.length;
+  if(room<=0){ toast('사진은 최대 '+A2_MAXPHOTOS+'장까지입니다.'); return; }
+  var take=files.slice(0,room);
+  if(files.length>room) toast('최대 '+A2_MAXPHOTOS+'장까지만 담깁니다.');
+  var pending=take.length, added=0, skipped=0;
+  toast('사진 처리 중…');
+  take.forEach(function(f){
+    a2Compress(f,function(url,err){
+      if(url){ if(a2TotalBytes()+url.length*0.75 > A2_TOTALBYTES){ skipped++; } else { a2draft.photos.push(url); added++; } }
+      else { skipped++; }
+      pending--;
+      if(pending===0){
+        var msg=added? (added+'장 추가됨') : '추가된 사진 없음';
+        if(skipped) msg+=' · '+skipped+'장 제외(용량 초과/형식)';
+        toast(msg); render();
+      }
+    });
+  });
+}
+function a2DelPhoto(i){ a2draft.photos.splice(i,1); render(); }
+function validateA2(){
+  a2invalid={};
+  if(!(a2draft.assets && a2draft.assets.trim())) a2invalid['assets']=true;
+  for(var i=0;i<3;i++){
+    ['t','reason','act'].forEach(function(f){ if(!(a2draft.pros[i][f]&&a2draft.pros[i][f].trim())) a2invalid['pro'+i+f]=true; });
+    ['t','reason','fix'].forEach(function(f){ if(!(a2draft.cons[i][f]&&a2draft.cons[i][f].trim())) a2invalid['con'+i+f]=true; });
+  }
+  return Object.keys(a2invalid);
+}
+function a2err(key){ return (a2showErr && a2invalid[key])? ' style="border-color:var(--bad);background:#fff5f5"':''; }
+function viewA2Form(){
+  var editing = !!DB.activity2Of(SESS.student.id);
+  var h='<div class="card"><h2>2차 활동 — 나를 아는 시간</h2>'+
+    '<div class="note" style="margin:8px 0">✍️ 내가 가진 것, 나의 장점 3가지와 단점 3가지를 정리해 봅니다. <b>제출 기한: 활동 공개일로부터 1주일 이내</b> — 제출 후에도 기한 안에는 <b>언제든 다시 수정</b>할 수 있습니다.</div>'+
+    (editing?'<div class="note" style="background:#eef4ff;border-color:#c9dbff">✏️ 이미 제출한 내용을 <b>수정하는 중</b>입니다. 바꾼 뒤 아래 [수정 저장]을 누르세요.</div>':'');
+  if(a2showErr && Object.keys(a2invalid).length){ h+='<div class="validbanner">⚠️ 아직 채우지 않은 칸이 있습니다. 붉게 표시된 칸을 채워 주세요.</div>'; }
+  h+='<div class="qcard"><div class="qhead"><span class="qbadge">1</span><span>내가 가지고 있는 것들 <span class="reqmark">*</span></span></div>'+
+     '<p class="hint">자격증·경험·기술·성격·인맥 등 나의 자산을 자유롭게 적어 보세요.</p>'+
+     '<textarea oninput="setA2Assets(this.value)"'+a2err('assets')+'>'+esc(a2draft.assets)+'</textarea>'+
+     '<div style="margin-top:12px"><b>관련 사진 올리기</b> <span class="hint">(자격증·상장·활동 사진 등 · 최대 '+A2_MAXPHOTOS+'장, 자동으로 용량을 줄여 올립니다 · 선택)</span></div>'+
+     '<div style="margin-top:6px"><input type="file" accept="image/*" multiple onchange="a2PickPhotos(this)"></div>';
+  if(a2draft.photos.length){
+    h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">'+
+      a2draft.photos.map(function(p,i){
+        return '<div style="position:relative;width:96px;height:96px;border:1px solid var(--line);border-radius:8px;overflow:hidden">'+
+          '<img src="'+p+'" style="width:100%;height:100%;object-fit:cover">'+
+          '<button onclick="a2DelPhoto('+i+')" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:6px;width:22px;height:22px;cursor:pointer;font-weight:700">✕</button>'+
+        '</div>';
+      }).join('')+'</div><p class="hint" style="margin-top:4px">'+a2draft.photos.length+' / '+A2_MAXPHOTOS+'장</p>';
+  }
+  h+='</div>';
+  h+='<h3>나의 장점 3가지</h3>';
+  for(var i=0;i<3;i++){
+    h+='<div class="qcard" style="border-left-color:var(--ok)"><div class="qhead"><span class="qbadge" style="background:var(--ok)">장점 '+(i+1)+'</span></div>'+
+      '<label>장점 <span class="reqmark">*</span></label><input type="text" value="'+esc(a2draft.pros[i].t)+'" oninput="setA2Pro('+i+',\'t\',this.value)"'+a2err('pro'+i+'t')+'>'+
+      '<label>그렇게 생각하는 이유 <span class="reqmark">*</span></label><textarea oninput="setA2Pro('+i+',\'reason\',this.value)"'+a2err('pro'+i+'reason')+'>'+esc(a2draft.pros[i].reason)+'</textarea>'+
+      '<label>이 장점을 보여준 대표 활동 <span class="reqmark">*</span></label><textarea oninput="setA2Pro('+i+',\'act\',this.value)"'+a2err('pro'+i+'act')+'>'+esc(a2draft.pros[i].act)+'</textarea>'+
+    '</div>';
+  }
+  h+='<h3>나의 단점(보완점) 3가지</h3>';
+  for(var j=0;j<3;j++){
+    h+='<div class="qcard" style="border-left-color:var(--warn)"><div class="qhead"><span class="qbadge" style="background:var(--warn)">단점 '+(j+1)+'</span></div>'+
+      '<label>단점 <span class="reqmark">*</span></label><input type="text" value="'+esc(a2draft.cons[j].t)+'" oninput="setA2Con('+j+',\'t\',this.value)"'+a2err('con'+j+'t')+'>'+
+      '<label>그렇게 생각하는 이유 <span class="reqmark">*</span></label><textarea oninput="setA2Con('+j+',\'reason\',this.value)"'+a2err('con'+j+'reason')+'>'+esc(a2draft.cons[j].reason)+'</textarea>'+
+      '<label>이 단점을 보완할 수 있는 방안 <span class="reqmark">*</span></label><textarea oninput="setA2Con('+j+',\'fix\',this.value)"'+a2err('con'+j+'fix')+'>'+esc(a2draft.cons[j].fix)+'</textarea>'+
+    '</div>';
+  }
+  h+='<div class="navrow"><div><button class="btn gray" onclick="go(\'hub\')">취소</button></div>'+
+     '<div><button class="btn" onclick="submitA2()">'+(editing?'수정 저장':'제출')+'</button></div></div>';
+  return h+'</div>';
+}
+function submitA2(){
+  var bad=validateA2();
+  if(bad.length){ a2showErr=true; render(); setTimeout(function(){ var e=document.querySelector('[style*="border-color:var(--bad)"]'); if(e&&e.scrollIntoView) e.scrollIntoView({behavior:'smooth',block:'center'}); },40); return; }
+  a2showErr=false;
+  var payload={ assets:a2draft.assets, pros:a2draft.pros, cons:a2draft.cons, photos:a2draft.photos };
+  if(MODE==='remote'){
+    if(submitting) return; submitting=true; toast('제출 중…');
+    apiCall('saveActivity2', payload).then(function(res){
+      submitting=false;
+      if(!res.j || res.j.ok!==true){ toast((res.j&&res.j.error)||'서버 저장에 실패했습니다. 잠시 후 다시 제출해 주세요.'); return; }
+      DB.saveActivity2Local(SESS.student.id, SESS.student.klass, payload);
+      toast('제출되었습니다.'); go('hub');
+    }).catch(function(){ submitting=false; toast('서버 연결에 실패했습니다. 잠시 후 다시 제출해 주세요.'); });
+    return;
+  }
+  DB.saveActivity2Local(SESS.student.id, SESS.student.klass, payload);
+  toast('제출되었습니다.'); go('hub');
+}
+/* ---- 교수: 2차 활동 목록/상세 ---- */
+function viewA2List(){
+  var studs=viewStudents(), subCount=0;
+  var rows=studs.map(function(st){
+    var r=DB.activity2Of(st.id); if(r) subCount++;
+    var status=r? '<span class="pill t-start">제출 ✓</span>' : '<span class="muted">미제출</span>';
+    var btn=r? '<button class="btn sm gray" onclick="go(\'a2v:'+st.id+'\')">보기</button>':'';
+    return '<tr><td>'+st.klass+'</td><td>'+esc(st.name)+'</td><td>'+esc(st.no)+'</td><td>'+status+'</td><td class="muted">'+(r?esc(r.submitted_at||''):'')+'</td><td>'+btn+'</td></tr>';
+  }).join('');
+  return '<div class="card"><h2>2차 활동 — 제출 현황 <span class="hint">— 보기: '+classLabel(viewClass())+'</span></h2>'+
+    '<p class="muted">제출 '+subCount+' / '+studs.length+'명. 학생별 [보기]로 내용과 사진을 확인합니다.</p>'+
+    (studs.length? '<table><tr><th>반</th><th>이름</th><th>학번</th><th>제출</th><th>제출시각</th><th></th></tr>'+rows+'</table>' : '<p class="muted">이 반은 등록된 학생이 없습니다.</p>')+
+  '</div>';
+}
+function viewA2Detail(sid){
+  var st=DB.d.students.filter(function(x){return x.id===sid;})[0];
+  var back='<div class="row" style="margin-top:12px"><button class="btn gray" onclick="go(\'a2list\')">← 목록</button></div>';
+  if(!st) return '<div class="card"><h2>2차 활동</h2><p class="muted">학생을 찾을 수 없습니다.</p>'+back+'</div>';
+  var row;
+  if(MODE==='remote'){
+    if(a2view.sid!==sid){
+      a2view={sid:sid, row:null, loading:true};
+      apiCall('getActivity2',{sid:sid}).then(function(res){ a2view={sid:sid, row:(res.j&&res.j.row)||null, loading:false}; render(); }).catch(function(){ a2view={sid:sid,row:null,loading:false}; toast('불러오기에 실패했습니다.'); render(); });
+      return '<div class="card"><h2>2차 활동 — '+esc(st.name)+'</h2><p class="muted">불러오는 중…</p>'+back+'</div>';
+    }
+    row=a2view.row;
+  } else {
+    row=DB.activity2Of(sid);
+  }
+  if(!row) return '<div class="card"><h2>2차 활동 — '+esc(st.name)+'</h2><p class="muted">아직 제출하지 않았습니다.</p>'+back+'</div>';
+  var h='<div class="card"><h2>2차 활동 — '+esc(st.name)+' <span class="hint">'+esc(st.no)+' · '+st.klass+'반</span></h2>';
+  h+='<h3>내가 가지고 있는 것들</h3><div class="prof-card" style="white-space:pre-wrap">'+esc(row.assets||'—')+'</div>';
+  if(row.photos && row.photos.length){
+    h+='<h3>첨부 사진 ('+row.photos.length+')</h3><div style="display:flex;flex-wrap:wrap;gap:8px">'+
+      row.photos.map(function(p){ return '<a href="'+p+'" target="_blank" rel="noopener"><img src="'+p+'" style="width:120px;height:120px;object-fit:cover;border:1px solid var(--line);border-radius:8px"></a>'; }).join('')+'</div>';
+  }
+  h+='<h3>장점 3가지</h3>';
+  (row.pros||[]).forEach(function(p,i){ if(!(p&&(p.t||p.reason||p.act)))return; h+='<div class="prof-card" style="margin-bottom:8px;border-left:4px solid var(--ok)"><b>장점 '+(i+1)+': '+esc(p.t||'—')+'</b><div class="kv" style="margin-top:6px"><div class="k">이유</div><div style="white-space:pre-wrap">'+esc(p.reason||'—')+'</div><div class="k">대표 활동</div><div style="white-space:pre-wrap">'+esc(p.act||'—')+'</div></div></div>'; });
+  h+='<h3>단점(보완점) 3가지</h3>';
+  (row.cons||[]).forEach(function(c,i){ if(!(c&&(c.t||c.reason||c.fix)))return; h+='<div class="prof-card" style="margin-bottom:8px;border-left:4px solid var(--warn)"><b>단점 '+(i+1)+': '+esc(c.t||'—')+'</b><div class="kv" style="margin-top:6px"><div class="k">이유</div><div style="white-space:pre-wrap">'+esc(c.reason||'—')+'</div><div class="k">보완 방안</div><div style="white-space:pre-wrap">'+esc(c.fix||'—')+'</div></div></div>'; });
+  h+='<p class="muted" style="margin-top:8px">제출 '+esc(row.submitted_at||'')+'</p>'+back;
+  return h+'</div>';
+}
+function toggleActivity(n){
+  if(!isSuper()){ toast('슈퍼관리자만 가능합니다.'); return; }
+  var act=ACTIVITIES.filter(function(a){return a.n===n;})[0]; if(!act) return;
+  var to=!act.active;
+  if(MODE==='remote'){
+    apiCall('setActivityActive',{n:n, active:to}).then(function(res){
+      if(!res.j || res.j.ok!==true){ toast((res.j&&res.j.error)||'변경에 실패했습니다.'); return; }
+      act.active=to; toast(n+'차 활동을 '+(to?'열었습니다':'닫았습니다')+'.'); render();
+    }).catch(function(){ toast('서버 연결에 실패했습니다.'); });
+    return;
+  }
+  act.active=to; toast(n+'차 활동을 '+(to?'열었습니다':'닫았습니다')+'.'); render();
+}
 function esc(s){ return (''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 /* ============================================================================
