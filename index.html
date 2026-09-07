@@ -748,6 +748,7 @@ function exitStudentPreview(){
   var back=SESS.pvReturn||'hub'; SESS.pvProf=null; SESS.pvReturn=null; go(back);
 }
 var VIEW = 'login';
+var restoringSession = false;   /* 지속 로그인 복원 중(remote bootstrap 재검증 대기) */
 var loginRole = 'student';
 var draft = {};   // 설문 작성 중 응답
 var a2draft = a2Empty();   // 2차 활동 작성 중 응답
@@ -832,6 +833,11 @@ function setClassView(c){ SESS.classView=c; render(); }
 
 /* ---- 로그인 ---- */
 function viewLogin(){
+  if(restoringSession){
+    return '<div class="card" style="max-width:440px;margin:60px auto;text-align:center">'+
+      '<h2>바이오취업역량개발</h2>'+
+      '<p class="muted" style="margin-top:12px">로그인 상태를 확인하는 중입니다…</p></div>';
+  }
   return '<div class="card" style="max-width:440px;margin:40px auto">'+
     '<h2>바이오취업역량개발</h2>'+
     '<div class="seg" style="margin:8px 0 16px">'+
@@ -857,15 +863,15 @@ function doLogin(){
   if(loginRole==='prof'){
     var p=PROFS.filter(function(x){return norm(x.name)===norm(nm)&&x.num===no;})[0];
     if(!p || !p.num){ toast('명단에 없는 교수 정보입니다.'); return; }
-    SESS.role='prof'; SESS.prof=p; SESS.student=null; SESS.classView='ALL'; go('hub'); return;
+    SESS.role='prof'; SESS.prof=p; SESS.student=null; SESS.classView='ALL'; saveSession(); go('hub'); return;
   }
   var st=DB.student(nm,no);
   if(!st){ toast('출석부에 없는 학생입니다. 이름·학번을 확인해 주세요.'); return; }
   SESS.role='student'; SESS.student=st; SESS.prof=null;
   draft = (DB.response(st.id)||{}).answers ? JSON.parse(JSON.stringify(DB.response(st.id).answers)) : {};
-  go('hub');
+  saveSession(); go('hub');
 }
-function logout(){ try{ sessionStorage.removeItem(TOKENKEY); }catch(e){} SESS={role:null,student:null,prof:null,classView:'ALL'}; draft={}; if(MODE==='remote'){ DB.d={students:[],responses:[],interviews:[],activity2:[]}; } go('login'); }
+function logout(){ try{ sessionStorage.removeItem(TOKENKEY); }catch(e){} clearSession(); SESS={role:null,student:null,prof:null,classView:'ALL'}; draft={}; if(MODE==='remote'){ DB.d={students:[],responses:[],interviews:[],activity2:[]}; } go('login'); }
 
 /* ---- 개인정보 수집·이용 동의 (설문 진입 전) ---- */
 function viewConsent(){
@@ -1915,6 +1921,62 @@ function esc(s){ return (''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
      · 로컬(?demo=1)에서는 이 계층을 쓰지 않고 기존 브라우저 저장 로직으로 동작.
    ========================================================================== */
 var TOKENKEY='biocareer_token';
+/* ── 지속 로그인 세션 (2026-09-07) ──
+   로그인 성공 시 최소 식별정보(remote는 서버 토큰 포함)를 localStorage에 저장하고,
+   새로고침·재접속 시 복원해 로그인 화면을 건너뛴다. 명시적 로그아웃 전까지 유지.
+   ⚠️ 미리보기(previewAsStudent)는 저장하지 않는다 — 실제 로그인 세션 훼손 방지. */
+var SS_KEY = (MODE==='local') ? 'biocareer_session_demo' : 'biocareer_session';
+function saveSession(){
+  if(SESS && SESS.previewAsStudent) return;           /* 미리보기 세션은 저장 안 함 */
+  if(!SESS || !SESS.role) return;
+  var s={ v:1, mode:MODE, role:SESS.role };
+  if(MODE==='remote'){ var tk=''; try{ tk=sessionStorage.getItem(TOKENKEY)||''; }catch(e){} if(!tk) return; s.token=tk; }
+  if(SESS.role==='prof'){ var p=SESS.prof||{}; s.prof={ name:p.name, num:(MODE==='remote'?'':(p.num||'')), klass:p.klass, role:p.role }; }
+  else { var st=SESS.student||{}; s.studentId=st.id; s.name=st.name; s.no=st.no; }
+  try{ localStorage.setItem(SS_KEY, JSON.stringify(s)); }catch(e){}
+}
+function clearSession(){ try{ localStorage.removeItem(SS_KEY); }catch(e){} }
+function failRestore(){ clearSession(); try{ sessionStorage.removeItem(TOKENKEY); }catch(e){} restoringSession=false; SESS={role:null,student:null,prof:null,classView:'ALL'}; draft={}; go('login'); }
+/* 저장된 세션 복원 시도. remote는 저장 토큰으로 bootstrap 재검증(만료·무효면 조용히 로그인 화면).
+   true 반환 시 remote는 비동기로 자체 render 처리, local은 VIEW만 세팅(호출부에서 render). */
+function tryRestoreSession(){
+  var raw; try{ raw=localStorage.getItem(SS_KEY); }catch(e){ return false; }
+  if(!raw) return false;
+  var s; try{ s=JSON.parse(raw); }catch(e){ clearSession(); return false; }
+  if(!s || s.mode!==MODE || !s.role){ clearSession(); return false; }
+  if(MODE==='remote'){
+    if(!s.token){ clearSession(); return false; }
+    try{ sessionStorage.setItem(TOKENKEY, s.token); }catch(e){}
+    restoringSession=true; VIEW='login'; render();     /* 복원 중 안내 표시 */
+    apiCall('bootstrap',{}).then(function(bs){
+      if(bs.status!==200 || !bs.j || bs.j.error){ failRestore(); return; }
+      applyBootstrap(bs.j);
+      if(s.role==='prof'){
+        var pr=s.prof||{}; SESS={role:'prof', student:null, prof:{name:pr.name, num:'', klass:pr.klass, role:pr.role}, classView:'ALL'};
+      } else {
+        var st=DB.d.students.filter(function(x){return x.id===s.studentId;})[0];
+        if(!st){ failRestore(); return; }
+        SESS={role:'student', student:st, prof:null, classView:'ALL'};
+        draft = (DB.response(st.id)||{}).answers ? JSON.parse(JSON.stringify(DB.response(st.id).answers)) : {};
+      }
+      restoringSession=false; go('hub');
+    }).catch(function(){ failRestore(); });
+    return true;
+  }
+  /* local(?demo=1) */
+  if(s.role==='prof'){
+    var pn=(s.prof&&s.prof.name), pu=(s.prof&&s.prof.num);
+    var p=PROFS.filter(function(x){return norm(x.name)===norm(pn)&&x.num===pu;})[0];
+    if(!p || !p.num){ clearSession(); return false; }
+    SESS={role:'prof', prof:p, student:null, classView:'ALL'}; VIEW='hub'; return true;
+  } else {
+    var lst=DB.student(s.name, s.no);
+    if(!lst){ clearSession(); return false; }
+    SESS={role:'student', student:lst, prof:null, classView:'ALL'};
+    draft = (DB.response(lst.id)||{}).answers ? JSON.parse(JSON.stringify(DB.response(lst.id).answers)) : {};
+    VIEW='hub'; return true;
+  }
+}
 var PV_WRITE_ACTIONS={setConsent:1,saveResponse:1,saveActivity2:1,setEarly:1,deleteStudent:1,addStudent:1,updateStudent:1,deleteClass:1,registerRoster:1,setActivityActive:1};
 function apiCall(action, params){
   if(SESS&&SESS.previewAsStudent&&PV_WRITE_ACTIONS[action]){
@@ -1955,6 +2017,7 @@ function doLoginRemote(role, nm, no){
       else { var st=DB.d.students.filter(function(s){return s.id===user.id;})[0]||mapStudent({id:user.id,name:user.name,no:user.no,klass:user.klass}); SESS={role:'student', student:st, prof:null, classView:'ALL'};
         /* 제출한 응답을 수정할 수 있도록, 서버(bootstrap)에서 불러온 기존 응답을 설문 초안에 채운다 */
         draft = (DB.response(st.id)||{}).answers ? JSON.parse(JSON.stringify(DB.response(st.id).answers)) : {}; }
+      saveSession();
       go('hub');
     });
   }).catch(function(){ toast('서버 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.'); });
@@ -1974,7 +2037,9 @@ function remoteWrite(action, params, okMsg){
    5. 시작
    ========================================================================== */
 if(MODE==='local'){ PROFS = DEMO_SEED.profs; }   /* ?demo=1 로컬 테스트 계정 */
-DB.load(); DB.seed(); render();
+DB.load(); DB.seed();
+var _restored = tryRestoreSession();   /* 저장된 로그인 세션 복원 시도 */
+if(!(MODE==='remote' && _restored)){ render(); }   /* remote 복원은 비동기로 자체 render */
 </script>
 </body>
 </html>
