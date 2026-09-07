@@ -745,6 +745,7 @@ function go(v){ if(v==='survey'){ stepIdx=0; invalid={}; showValidateMsg=false; 
    ========================================================================== */
 function render(){
   var el=document.getElementById('app');
+  if(VIEW!=='a2pv') a2preview=false;   /* 미리보기 화면을 벗어나면 자동 해제 */
   if(VIEW==='login'){ el.innerHTML = viewLogin(); return; }
   var bar = topbar();
   if(VIEW==='hub'){ el.innerHTML = bar+viewHub(); return; }   /* 로그인 후 첫 화면 = 활동 목록 */
@@ -760,6 +761,7 @@ function render(){
     else if(VIEW==='roster') el.innerHTML = bar+viewRoster();
     else if(VIEW.indexOf('sc:')===0) el.innerHTML = bar+viewProfileCard(VIEW.slice(3), false);
     else if(VIEW==='a2list') el.innerHTML = bar+viewA2List();
+    else if(VIEW==='a2pv') el.innerHTML = bar+viewA2Form();   /* 학생 화면 미리보기(읽기전용) */
     else if(VIEW.indexOf('a2v:')===0) el.innerHTML = bar+viewA2Detail(VIEW.slice(4));
   }
 }
@@ -1490,6 +1492,7 @@ function resetDemo(){ if(confirm('입력된 설문 응답을 모두 지울까요
    ========================================================================== */
 var A2_MAXPHOTOS=10, A2_MAXEDGE=1024, A2_PERBYTES=350*1024, A2_TOTALBYTES=3300000;
 var a2invalid={}, a2showErr=false, a2view={ sid:null, row:null, loading:false };
+var a2preview=false;   /* 교수 '학생 화면 미리보기' 모드 — true면 폼을 읽기전용으로 */
 function a2Empty(){ return { assets:'', pros:[{t:'',reason:'',act:''},{t:'',reason:'',act:''},{t:'',reason:'',act:''}], cons:[{t:'',reason:'',fix:''},{t:'',reason:'',fix:''},{t:'',reason:'',fix:''}], photos:[] }; }
 function a2FromResponse(r){
   var d=a2Empty(); if(!r) return d;
@@ -1562,10 +1565,13 @@ function validateA2(){
 }
 function a2err(key){ return (a2showErr && a2invalid[key])? ' style="border-color:var(--bad);background:#fff5f5"':''; }
 function viewA2Form(){
-  var editing = !!DB.activity2Of(SESS.student.id);
-  var h='<div class="card"><h2>2차 활동 — 나를 아는 시간</h2>'+
-    '<div class="note" style="margin:8px 0">✍️ 내가 가진 것, 나의 장점 3가지와 단점 3가지를 정리해 봅니다. <b>제출 기한: 활동 공개일로부터 1주일 이내</b> — 제출 후에도 기한 안에는 <b>언제든 다시 수정</b>할 수 있습니다.</div>'+
-    (editing?'<div class="note" style="background:#eef4ff;border-color:#c9dbff">✏️ 이미 제출한 내용을 <b>수정하는 중</b>입니다. 바꾼 뒤 아래 [수정 저장]을 누르세요.</div>':'');
+  var pv = (typeof a2preview!=='undefined' && a2preview===true);   /* 교수 미리보기 = 읽기전용 */
+  var editing = !pv && !!DB.activity2Of(SESS.student.id);
+  var h='<div class="card"><h2>2차 활동 — 나를 아는 시간'+(pv?' <span class="hint">(학생 화면 미리보기)</span>':'')+'</h2>'+
+    (pv?'<div class="validbanner" style="background:#eef4ff;border-color:#c9dbff;color:#22407a">👁 <b>학생 화면 미리보기</b> — 학생이 실제로 보는 2차 활동 입력 화면입니다. 이 화면에서 입력·제출해도 <b>저장되지 않습니다</b>.</div>':'')+
+    '<div class="note" style="margin:8px 0">✍️ 내가 가진 것, 나의 장점 3가지와 단점 3가지를 정리해 봅니다. <b>권장 제출 기한: 활동 공개일로부터 1주일 이내</b> — 권장일 뿐이며, 활동이 열려 있는 동안에는 기한이 지나도 <b>언제든 다시 열어 수정·저장</b>할 수 있습니다.</div>'+
+    (editing?'<div class="note" style="background:#eef4ff;border-color:#c9dbff">✏️ 이미 제출한 내용을 <b>수정하는 중</b>입니다. 바꾼 뒤 아래 [수정 저장]을 누르세요.</div>':'')+
+    '<fieldset '+(pv?'disabled ':'')+'style="border:none;padding:0;margin:0;min-width:0">';
   if(a2showErr && Object.keys(a2invalid).length){ h+='<div class="validbanner">⚠️ 아직 채우지 않은 칸이 있습니다. 붉게 표시된 칸을 채워 주세요.</div>'; }
   h+='<div class="qcard"><div class="qhead"><span class="qbadge">1</span><span>내가 가지고 있는 것들 <span class="reqmark">*</span></span></div>'+
      '<p class="hint">자격증·경험·기술·성격·인맥 등 나의 자산을 자유롭게 적어 보세요.</p>'+
@@ -1598,7 +1604,17 @@ function viewA2Form(){
       '<label>이 단점을 보완할 수 있는 방안 <span class="reqmark">*</span></label><textarea oninput="setA2Con('+j+',\'fix\',this.value)"'+a2err('con'+j+'fix')+'>'+esc(a2draft.cons[j].fix)+'</textarea>'+
     '</div>';
   }
-  h+='<div class="navrow"><div><button class="btn gray" onclick="go(\'hub\')">취소</button></div>'+
+  h+='</fieldset>';
+  if(pv){
+    h+='<div class="navrow"><div><button class="btn gray" onclick="go(\'a2list\')">← 관리 화면으로</button></div><div></div></div>';
+    return h+'</div>';
+  }
+  h+='<div class="row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">'+
+      '<button class="btn sm gray" onclick="a2DownloadStudentDoc()">⬇ 내 답변 워드(.docx)</button>'+
+      '<button class="btn sm gray" onclick="a2PrintStudent()">🖨 내 답변 PDF(인쇄)</button>'+
+      '<span class="hint">지금 화면에 입력한 내용을 파일로 저장합니다 (PDF에는 사진도 포함).</span>'+
+     '</div>'+
+     '<div class="navrow"><div><button class="btn gray" onclick="go(\'hub\')">취소</button></div>'+
      '<div><button class="btn" onclick="submitA2()">'+(editing?'수정 저장':'제출')+'</button></div></div>';
   return h+'</div>';
 }
@@ -1620,6 +1636,138 @@ function submitA2(){
   DB.saveActivity2Local(SESS.student.id, SESS.student.klass, payload);
   toast('제출되었습니다.'); go('hub');
 }
+/* ============================================================================
+   2차 활동 — 다운로드(학생 본인 / 교수) · 학생 화면 미리보기 (2026-09-07 추가)
+     · 한글 안전: 워드는 실제 .docx(OOXML, xlZip 재활용), PDF는 window.print 기반.
+     · 사진: PDF(인쇄)에는 포함, .docx는 텍스트 위주(사진 장수만 표기).
+   ========================================================================== */
+function a2Norm(d){
+  d=d||{};
+  var pros=[], cons=[];
+  for(var i=0;i<3;i++){
+    var p=(d.pros&&d.pros[i])||{}; pros.push({t:p.t||'',reason:p.reason||'',act:p.act||''});
+    var c=(d.cons&&d.cons[i])||{}; cons.push({t:c.t||'',reason:c.reason||'',fix:c.fix||''});
+  }
+  return { assets:d.assets||'', pros:pros, cons:cons, photos:(d.photos&&d.photos.slice)?d.photos.slice():[] };
+}
+/* 인쇄(PDF)·화면 공용 HTML 본문 — withPhotos면 사진도 포함 */
+function a2BodyHtml(d, st, withPhotos){
+  d=a2Norm(d); st=st||{};
+  var h='<h1 style="font-size:18pt;margin:0 0 4px">2차 활동 — '+esc(st.name||'')+'</h1>'+
+    '<p style="color:#555;margin:0 0 14px">학번 '+esc(st.no||'')+' · '+esc(st.klass||'')+'반</p>'+
+    '<h2 style="font-size:13pt;border-bottom:1px solid #999;padding-bottom:2px">내가 가지고 있는 것들</h2>'+
+    '<p style="white-space:pre-wrap">'+esc(d.assets||'—')+'</p>';
+  if(withPhotos && d.photos.length){
+    h+='<h2 style="font-size:13pt;border-bottom:1px solid #999;padding-bottom:2px">첨부 사진 ('+d.photos.length+')</h2><div>'+
+      d.photos.map(function(p){ return '<img src="'+p+'" style="max-width:31%;margin:0 6px 6px 0;border:1px solid #ccc;vertical-align:top">'; }).join('')+'</div>';
+  }
+  h+='<h2 style="font-size:13pt;border-bottom:1px solid #999;padding-bottom:2px;color:#1a8f4a">나의 장점 3가지</h2>';
+  d.pros.forEach(function(p,i){ h+='<div style="margin:0 0 10px"><b>장점 '+(i+1)+': '+esc(p.t||'—')+'</b>'+
+    '<div style="margin-left:12px"><div><b>이유:</b> <span style="white-space:pre-wrap">'+esc(p.reason||'—')+'</span></div>'+
+    '<div><b>대표 활동:</b> <span style="white-space:pre-wrap">'+esc(p.act||'—')+'</span></div></div></div>'; });
+  h+='<h2 style="font-size:13pt;border-bottom:1px solid #999;padding-bottom:2px;color:#c9761a">나의 단점(보완점) 3가지</h2>';
+  d.cons.forEach(function(c,i){ h+='<div style="margin:0 0 10px"><b>단점 '+(i+1)+': '+esc(c.t||'—')+'</b>'+
+    '<div style="margin-left:12px"><div><b>이유:</b> <span style="white-space:pre-wrap">'+esc(c.reason||'—')+'</span></div>'+
+    '<div><b>보완 방안:</b> <span style="white-space:pre-wrap">'+esc(c.fix||'—')+'</span></div></div></div>'; });
+  return h;
+}
+function a2Print(d, st){
+  var body=a2BodyHtml(d, st, true);
+  var w=window.open('','_blank');
+  if(!w){ toast('팝업이 막혔습니다 — 브라우저에서 팝업을 허용한 뒤 다시 시도하세요.'); return; }
+  w.document.write('<html><head><meta charset="utf-8"><title>bio_activity2_'+esc((st&&st.no)||'student')+'</title>'+
+    '<style>body{font-family:"맑은 고딕",sans-serif;font-size:11pt;line-height:1.6;padding:24px;color:#111}h1,h2{font-family:"맑은 고딕",sans-serif}img{page-break-inside:avoid}</style></head>'+
+    '<body>'+body+'</body></html>');
+  w.document.close(); w.focus();
+  setTimeout(function(){ try{ w.print(); }catch(e){} }, 400);
+}
+/* ── 실제 .docx (OOXML) — xlZip/xlUtf8 재활용, 한글 온전 ── */
+function dEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function dRuns(text, bold, sz){
+  var s=(text==null||text==='')?'—':String(text);
+  var lines=s.split('\n');
+  var rpr='<w:rPr><w:rFonts w:ascii="맑은 고딕" w:eastAsia="맑은 고딕" w:hAnsi="맑은 고딕"/>'+(bold?'<w:b/>':'')+(sz?'<w:sz w:val="'+sz+'"/><w:szCs w:val="'+sz+'"/>':'')+'</w:rPr>';
+  var out='';
+  for(var i=0;i<lines.length;i++){ out+='<w:r>'+rpr+(i>0?'<w:br/>':'')+'<w:t xml:space="preserve">'+dEsc(lines[i])+'</w:t></w:r>'; }
+  return out;
+}
+function dPara(text, opt){ opt=opt||{};
+  return '<w:p><w:pPr><w:spacing w:after="'+(opt.after==null?120:opt.after)+'"/></w:pPr>'+dRuns(text, opt.bold, opt.sz)+'</w:p>';
+}
+function a2Docx(d, st){
+  d=a2Norm(d); st=st||{};
+  var P='';
+  P+=dPara('2차 활동 — '+(st.name||''), {bold:true, sz:32, after:60});
+  P+=dPara('학번 '+(st.no||'')+' · '+(st.klass||'')+'반', {sz:20, after:200});
+  P+=dPara('내가 가지고 있는 것들', {bold:true, sz:26, after:80});
+  P+=dPara(d.assets||'—', {after:200});
+  if(d.photos.length) P+=dPara('(첨부 사진 '+d.photos.length+'장 — 화면 또는 PDF에서 확인)', {sz:18, after:200});
+  P+=dPara('나의 장점 3가지', {bold:true, sz:26, after:80});
+  d.pros.forEach(function(p,i){
+    P+=dPara('장점 '+(i+1)+': '+(p.t||'—'), {bold:true, after:40});
+    P+=dPara('· 이유: '+(p.reason||'—'), {after:40});
+    P+=dPara('· 대표 활동: '+(p.act||'—'), {after:160});
+  });
+  P+=dPara('나의 단점(보완점) 3가지', {bold:true, sz:26, after:80});
+  d.cons.forEach(function(c,i){
+    P+=dPara('단점 '+(i+1)+': '+(c.t||'—'), {bold:true, after:40});
+    P+=dPara('· 이유: '+(c.reason||'—'), {after:40});
+    P+=dPara('· 보완 방안: '+(c.fix||'—'), {after:160});
+  });
+  var doc='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'+P+
+    '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>'+
+    '</w:body></w:document>';
+  var ct='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
+    '<Default Extension="xml" ContentType="application/xml"/>'+
+    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'+
+    '</Types>';
+  var rels='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
+  return xlZip([
+    {name:'[Content_Types].xml', data:xlUtf8(ct)},
+    {name:'_rels/.rels', data:xlUtf8(rels)},
+    {name:'word/document.xml', data:xlUtf8(doc)}
+  ]);
+}
+function a2DownloadDoc(d, st){
+  try{ var bytes=a2Docx(d, st);
+    var b=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+    var u=URL.createObjectURL(b), a=document.createElement('a'); a.href=u; a.download='bio_activity2_'+((st&&st.no)||'student')+'.docx'; document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(u); a.remove(); },900);
+    toast('워드(.docx)를 내려받았습니다.');
+  }catch(e){ toast('워드 생성이 막혔습니다 — PDF(인쇄)를 이용하세요.'); }
+}
+/* 학생 본인 — 현재 화면(a2draft) 기준 */
+function a2DownloadStudentDoc(){ a2DownloadDoc(a2draft, SESS.student); }
+function a2PrintStudent(){ a2Print(a2draft, SESS.student); }
+/* 교수 — 학생별 상세의 데이터(remote=getActivity2 결과, local=DB) */
+function a2ProfData(sid){ if(MODE==='remote'){ return (a2view.sid===sid)? a2view.row : null; } return DB.activity2Of(sid); }
+function a2DownloadProfDoc(sid){ var st=stById(sid), d=a2ProfData(sid); if(!d){ toast('내용을 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'); return; } a2DownloadDoc(d, st); }
+function a2PrintProf(sid){ var st=stById(sid), d=a2ProfData(sid); if(!d){ toast('내용을 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'); return; } a2Print(d, st); }
+/* 교수 — 반별/전체 엑셀(사진 제외, 텍스트 표) */
+function a2Rows(){
+  var header=['반','이름','학번','제출여부','제출시각','보유자산',
+    '장점1','장점1_이유','장점1_대표활동','장점2','장점2_이유','장점2_대표활동','장점3','장점3_이유','장점3_대표활동',
+    '단점1','단점1_이유','단점1_보완방안','단점2','단점2_이유','단점2_보완방안','단점3','단점3_이유','단점3_보완방안','사진'];
+  var rows=[header];
+  viewStudents().forEach(function(st){
+    var r=DB.activity2Of(st.id);
+    var line=[st.klass, st.name, st.no, r?'제출':'미제출', r?(r.submitted_at||''):'', r?(r.assets||''):''];
+    for(var i=0;i<3;i++){ var p=(r&&r.pros&&r.pros[i])||{}; line.push(p.t||'', p.reason||'', p.act||''); }
+    for(var j=0;j<3;j++){ var c=(r&&r.cons&&r.cons[j])||{}; line.push(c.t||'', c.reason||'', c.fix||''); }
+    line.push(r? ((r.photos&&r.photos.length)? (r.photos.length+'장') : '상세화면 확인') : '');
+    rows.push(line);
+  });
+  return rows;
+}
+function doA2Excel(){ var c=viewClass(); downloadXlsx('bio_activity2_'+(c==='ALL'?'all':c)+'.xlsx', [{name:'2차활동', rows:a2Rows()}]); }
+/* 교수 — 학생 화면 미리보기(읽기전용, 저장 안 됨) */
+function openA2Preview(){ a2preview=true; a2draft=a2Empty(); go('a2pv'); }
+
 /* ---- 교수: 2차 활동 목록/상세 ---- */
 function viewA2List(){
   var studs=viewStudents(), subCount=0;
@@ -1631,6 +1779,11 @@ function viewA2List(){
   }).join('');
   return '<div class="card"><h2>2차 활동 — 제출 현황 <span class="hint">— 보기: '+classLabel(viewClass())+'</span></h2>'+
     '<p class="muted">제출 '+subCount+' / '+studs.length+'명. 학생별 [보기]로 내용과 사진을 확인합니다.</p>'+
+    '<div class="row" style="margin:2px 0 10px">'+
+      '<button class="btn sm" onclick="doA2Excel()">⬇ 2차 활동 엑셀 다운로드</button>'+
+      '<button class="btn sm gray" onclick="openA2Preview()">👁 학생 화면 미리보기</button>'+
+      '<span class="hint">엑셀 = 반별 표(사진 제외) · 개별 학생 Word/PDF는 아래 [보기]에서</span>'+
+    '</div>'+
     (studs.length? '<table><tr><th>반</th><th>이름</th><th>학번</th><th>제출</th><th>제출시각</th><th></th></tr>'+rows+'</table>' : '<p class="muted">이 반은 등록된 학생이 없습니다.</p>')+
   '</div>';
 }
@@ -1660,7 +1813,12 @@ function viewA2Detail(sid){
   (row.pros||[]).forEach(function(p,i){ if(!(p&&(p.t||p.reason||p.act)))return; h+='<div class="prof-card" style="margin-bottom:8px;border-left:4px solid var(--ok)"><b>장점 '+(i+1)+': '+esc(p.t||'—')+'</b><div class="kv" style="margin-top:6px"><div class="k">이유</div><div style="white-space:pre-wrap">'+esc(p.reason||'—')+'</div><div class="k">대표 활동</div><div style="white-space:pre-wrap">'+esc(p.act||'—')+'</div></div></div>'; });
   h+='<h3>단점(보완점) 3가지</h3>';
   (row.cons||[]).forEach(function(c,i){ if(!(c&&(c.t||c.reason||c.fix)))return; h+='<div class="prof-card" style="margin-bottom:8px;border-left:4px solid var(--warn)"><b>단점 '+(i+1)+': '+esc(c.t||'—')+'</b><div class="kv" style="margin-top:6px"><div class="k">이유</div><div style="white-space:pre-wrap">'+esc(c.reason||'—')+'</div><div class="k">보완 방안</div><div style="white-space:pre-wrap">'+esc(c.fix||'—')+'</div></div></div>'; });
-  h+='<p class="muted" style="margin-top:8px">제출 '+esc(row.submitted_at||'')+'</p>'+back;
+  h+='<p class="muted" style="margin-top:8px">제출 '+esc(row.submitted_at||'')+'</p>'+
+     '<div class="row" style="margin-top:6px">'+
+       '<button class="btn sm gray" onclick="a2DownloadProfDoc(\''+sid+'\')">⬇ 워드(.docx)</button>'+
+       '<button class="btn sm gray" onclick="a2PrintProf(\''+sid+'\')">🖨 PDF(인쇄)</button>'+
+       '<span class="hint">PDF(인쇄)에는 첨부 사진도 포함됩니다</span>'+
+     '</div>'+back;
   return h+'</div>';
 }
 function toggleActivity(n){
