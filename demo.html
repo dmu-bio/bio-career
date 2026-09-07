@@ -196,7 +196,7 @@ var LSKEY='biocareer_demo_v4';  /* 데모본 전용 저장키(반+동의+명단�
 var DB = {
   d:{ students:[], responses:[], interviews:[], activity2:[] },
   load:function(){ try{ var r=localStorage.getItem(LSKEY); if(r) this.d=JSON.parse(r); }catch(e){} },
-  save:function(){ try{ localStorage.setItem(LSKEY, JSON.stringify(this.d)); }catch(e){} },
+  save:function(){ if(SESS&&SESS.previewAsStudent) return; try{ localStorage.setItem(LSKEY, JSON.stringify(this.d)); }catch(e){} },
   seed:function(){
     if(this.d.students.length) return;
     if(this.d.seeded) return;                  /* 한 번 시드/삭제된 뒤에는 다시 채우지 않음(전체·반별 삭제가 새로고침 후에도 유지되도록) */
@@ -210,8 +210,8 @@ var DB = {
     var nm=norm(name);
     return this.d.students.filter(function(s){ return norm(s.name)===nm && s.no===no; })[0];
   },
-  response:function(sid){ return this.d.responses.filter(function(r){return r.student_id===sid;})[0]; },
-  activity2Of:function(sid){ return (this.d.activity2||[]).filter(function(r){return r.student_id===sid;})[0]; },
+  response:function(sid){ if(SESS&&SESS.previewAsStudent&&sid===PV_SID) return pvData.response||undefined; return this.d.responses.filter(function(r){return r.student_id===sid;})[0]; },
+  activity2Of:function(sid){ if(SESS&&SESS.previewAsStudent&&sid===PV_SID) return pvData.activity2||undefined; return (this.d.activity2||[]).filter(function(r){return r.student_id===sid;})[0]; },
   saveActivity2Local:function(sid, klass, payload){
     if(!this.d.activity2) this.d.activity2=[];
     var r=this.activity2Of(sid);
@@ -696,6 +696,27 @@ var Q = [
    3. 세션·라우팅
    ========================================================================== */
 var SESS = { role:null, student:null, prof:null, classView:'ALL' };   // role: 'student' | 'prof'
+/* ── 전역 「학생으로 보기」 미리보기 모드 (2026-09-07) ──
+   교수가 학생이 로그인 후 보는 화면 전체를 학생 관점으로 둘러보는 체험 모드.
+   가상(예시) 학생 컨텍스트로 렌더하며, 어떤 제출·저장도 서버/localStorage에 반영되지 않는다. */
+var PV_SID='__preview__';
+var pvData={ response:null, activity2:null };   /* 미리보기 전용 인메모리 — 서버·localStorage에 절대 저장 안 됨 */
+function isPreview(){ return !!(SESS && SESS.previewAsStudent); }
+function enterStudentPreview(){
+  if(SESS.role!=='prof'){ return; }
+  var kl=(viewClass()!=='ALL')? viewClass() : (CLASSES[0]?CLASSES[0].id:'F1');
+  SESS.pvProf=SESS.prof; SESS.pvClassView=SESS.classView; SESS.pvReturn=VIEW;
+  SESS.previewAsStudent=true; SESS.role='student'; SESS.prof=null;
+  SESS.student={ id:PV_SID, name:'예시 학생', no:'00000000', klass:kl, __preview:true };
+  pvData={ response:null, activity2:null }; draft={}; a2draft=a2Empty();
+  toast('👁 학생 화면 미리보기 — 저장되지 않습니다.'); go('hub');
+}
+function exitStudentPreview(){
+  SESS.role='prof'; SESS.prof=SESS.pvProf||SESS.prof; SESS.student=null;
+  SESS.classView=SESS.pvClassView||SESS.classView||'ALL'; SESS.previewAsStudent=false;
+  pvData={ response:null, activity2:null }; draft={}; a2draft=a2Empty();
+  var back=SESS.pvReturn||'hub'; SESS.pvProf=null; SESS.pvReturn=null; go(back);
+}
 var VIEW = 'login';
 var loginRole = 'student';
 var draft = {};   // 설문 작성 중 응답
@@ -738,15 +759,19 @@ function render(){
 function topbar(){
   var right, mid, sel='', subnav='';
   if(SESS.role==='student'){
-    mid = esc(SESS.student.name)+' · '+SESS.student.klass+'반';
-    right = '<button class="btn sm gray" onclick="go(\'hub\')">활동 목록</button>'+
-            '<button class="btn sm gray" onclick="logout()">로그아웃</button>';
+    mid = (isPreview()?'👁 ':'')+esc(SESS.student.name)+' · '+SESS.student.klass+'반';
+    right = isPreview()
+      ? '<button class="btn sm gray" onclick="go(\'hub\')">활동 목록</button>'+
+        '<button class="btn sm" onclick="exitStudentPreview()">← 미리보기 종료</button>'
+      : '<button class="btn sm gray" onclick="go(\'hub\')">활동 목록</button>'+
+        '<button class="btn sm gray" onclick="logout()">로그아웃</button>';
   } else {
     var p=SESS.prof||{};
     mid = '🟢 '+(isSuper()?'슈퍼관리자':'관리자')+' '+esc(p.name)+' · 담당 '+p.klass+'반';
     /* 「명단 관리」는 활동과 독립된 전역 메뉴 — 로그아웃 바로 왼쪽, 교수(슈퍼+관리자)에게만 노출 */
     right = '<button class="btn sm gray" onclick="go(\'hub\')">활동 목록</button>'+
             '<button class="btn sm gray" onclick="go(\'roster\')">명단 관리</button>'+
+            '<button class="btn sm" onclick="enterStudentPreview()">👁 학생으로 보기</button>'+
             '<button class="btn sm gray" onclick="logout()">로그아웃</button>';
     /* 반 선택 — 활동·명단 화면에서 표시(활동목록 hub에서는 숨김). 교수 3명 모두 전체 열람 가능 */
     if(VIEW!=='hub'){
@@ -766,7 +791,9 @@ function topbar(){
   return '<div class="top"><span class="ttl">'+APP_TITLE+'</span>'+
     '<span class="sp"></span>'+sel+'<span class="sub">'+mid+'</span> '+right+'</div>'+
     subnav+
-    '<div class="demoflag">🧪 예시(실명 아님) — 테스트용 데모본. 브라우저에만 저장(서버 미연결).</div>';
+    (isPreview()
+      ? '<div class="demoflag" style="background:#eef4ff;border-color:#c9dbff;color:#22407a">👁 <b>학생 화면 미리보기</b> — 지금 화면은 학생이 로그인 후 보는 모습입니다. 여기서 입력·제출해도 <b>저장되지 않습니다</b>. <button class="btn sm" style="padding:2px 10px;margin-left:4px" onclick="exitStudentPreview()">미리보기 종료</button></div>'
+      :     '<div class="demoflag">🧪 예시(실명 아님) — 테스트용 데모본. 브라우저에만 저장(서버 미연결).</div>');
 }
 function setClassView(c){ SESS.classView=c; render(); }
 
@@ -821,6 +848,7 @@ function viewConsent(){
 function agreeConsent(){
   var c=document.getElementById('consentChk');
   if(!c || !c.checked){ toast('동의하셔야 진로지도 활동에 참여할 수 있습니다.'); return; }
+  if(isPreview()){ SESS.student.consent={agreed:true, at:now()}; toast('👁 미리보기 — 저장되지 않습니다.'); go(consentNext||'home'); return; }
   setConsent(SESS.student.id); toast('동의가 저장되었습니다.'); go(consentNext||'home');
 }
 
@@ -1043,6 +1071,7 @@ function submitSurvey(){
   if(bad.length){ showValidateMsg=true; render(); scrollToInvalid(); return; }
   showValidateMsg=false; invalid={};
   var track = draft.A1;
+  if(isPreview()){ pvData.response={ id:'pv', student_id:PV_SID, track:track, answers:JSON.parse(JSON.stringify(draft)), submitted_at:now() }; toast('👁 미리보기 — 실제로 저장되지 않았습니다.'); go('card'); return; }
   DB.saveResponse(SESS.student.id, track, JSON.parse(JSON.stringify(draft)));
   toast('제출되었습니다.');
   go('card');
@@ -1050,7 +1079,7 @@ function submitSurvey(){
 
 /* ---- 진로 프로필 카드 ---- */
 function viewProfileCard(sid, self){
-  var st=DB.d.students.filter(function(x){return x.id===sid;})[0];
+  var st=(SESS&&SESS.previewAsStudent&&sid===PV_SID)? SESS.student : DB.d.students.filter(function(x){return x.id===sid;})[0];
   var r=DB.response(sid);
   if(!r) return '<div class="card"><h2>진로 프로필 카드</h2><p class="muted">아직 설문 응답이 없습니다.</p></div>';
   var a=r.answers;
@@ -1570,6 +1599,7 @@ function submitA2(){
   if(bad.length){ a2showErr=true; render(); setTimeout(function(){ var e=document.querySelector('[style*="border-color:var(--bad)"]'); if(e&&e.scrollIntoView) e.scrollIntoView({behavior:'smooth',block:'center'}); },40); return; }
   a2showErr=false;
   var payload={ assets:a2draft.assets, pros:a2draft.pros, cons:a2draft.cons, photos:a2draft.photos };
+  if(isPreview()){ pvData.activity2={ student_id:PV_SID, klass:SESS.student.klass, assets:payload.assets, pros:payload.pros, cons:payload.cons, photos:payload.photos, submitted_at:now() }; toast('👁 미리보기 — 실제로 저장되지 않았습니다.'); go('hub'); return; }
   if(MODE==='remote'){
     if(submitting) return; submitting=true; toast('제출 중…');
     apiCall('saveActivity2', payload).then(function(res){
@@ -1713,7 +1743,7 @@ function a2Rows(){
 }
 function doA2Excel(){ var c=viewClass(); downloadXlsx('bio_activity2_'+(c==='ALL'?'all':c)+'.xlsx', [{name:'2차활동', rows:a2Rows()}]); }
 /* 교수 — 학생 화면 미리보기(읽기전용, 저장 안 됨) */
-function openA2Preview(){ a2preview=true; a2draft=a2Empty(); go('a2pv'); }
+function openA2Preview(){ enterStudentPreview(); go('a2'); }
 
 /* ---- 교수: 2차 활동 목록/상세 ---- */
 function viewA2List(){
