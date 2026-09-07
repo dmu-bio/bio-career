@@ -813,6 +813,37 @@ function viewLogin(){
   '</div>';
 }
 function setRole(r){ loginRole=r; render(); }
+/* ── 지속 로그인 세션 (2026-09-07) ──
+   로그인 성공 시 식별정보를 localStorage에 저장하고, 새로고침·재접속 시 복원한다.
+   명시적 로그아웃 전까지 유지. ⚠️ 미리보기(previewAsStudent)는 저장하지 않는다. */
+var SS_KEY = 'biocareer_session_demo';
+function saveSession(){
+  if(SESS && SESS.previewAsStudent) return;
+  if(!SESS || !SESS.role) return;
+  var s={ v:1, mode:'local', role:SESS.role };
+  if(SESS.role==='prof'){ var p=SESS.prof||{}; s.prof={ name:p.name, num:p.num||'', klass:p.klass, role:p.role }; }
+  else { var st=SESS.student||{}; s.studentId=st.id; s.name=st.name; s.no=st.no; }
+  try{ localStorage.setItem(SS_KEY, JSON.stringify(s)); }catch(e){}
+}
+function clearSession(){ try{ localStorage.removeItem(SS_KEY); }catch(e){} }
+function tryRestoreSession(){
+  var raw; try{ raw=localStorage.getItem(SS_KEY); }catch(e){ return false; }
+  if(!raw) return false;
+  var s; try{ s=JSON.parse(raw); }catch(e){ clearSession(); return false; }
+  if(!s || s.mode!=='local' || !s.role){ clearSession(); return false; }
+  if(s.role==='prof'){
+    var pn=(s.prof&&s.prof.name), pu=(s.prof&&s.prof.num);
+    var p=SEED_PROFS.filter(function(x){return norm(x.name)===norm(pn)&&x.num===pu;})[0];
+    if(!p || !p.num || p.num==='SDE_TBD'){ clearSession(); return false; }
+    SESS={role:'prof', prof:p, student:null, classView:'ALL'}; VIEW='hub'; return true;
+  } else {
+    var st=DB.student(s.name, s.no);
+    if(!st){ clearSession(); return false; }
+    SESS={role:'student', student:st, prof:null, classView:'ALL'};
+    draft = (DB.response(st.id)||{}).answers ? JSON.parse(JSON.stringify(DB.response(st.id).answers)) : {};
+    VIEW='hub'; return true;
+  }
+}
 function doLogin(){
   var nm=(document.getElementById('inName').value||'').trim();
   var no=(document.getElementById('inNum').value||'').trim();
@@ -820,15 +851,15 @@ function doLogin(){
   if(loginRole==='prof'){
     var p=SEED_PROFS.filter(function(x){return norm(x.name)===norm(nm)&&x.num===no;})[0];
     if(!p || !p.num || p.num==='SDE_TBD'){ toast('명단에 없는 교수 정보입니다.'); return; }
-    SESS.role='prof'; SESS.prof=p; SESS.student=null; SESS.classView='ALL'; go('hub'); return;
+    SESS.role='prof'; SESS.prof=p; SESS.student=null; SESS.classView='ALL'; saveSession(); go('hub'); return;
   }
   var st=DB.student(nm,no);
   if(!st){ toast('출석부에 없는 학생입니다. 이름·학번을 확인해 주세요.'); return; }
   SESS.role='student'; SESS.student=st; SESS.prof=null;
   draft = (DB.response(st.id)||{}).answers ? JSON.parse(JSON.stringify(DB.response(st.id).answers)) : {};
-  go('hub');
+  saveSession(); go('hub');
 }
-function logout(){ SESS={role:null,student:null,prof:null,classView:'ALL'}; draft={}; go('login'); }
+function logout(){ clearSession(); SESS={role:null,student:null,prof:null,classView:'ALL'}; draft={}; go('login'); }
 
 /* ---- 개인정보 수집·이용 동의 (설문 진입 전) ---- */
 function viewConsent(){
@@ -1858,7 +1889,7 @@ function esc(s){ return (''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 /* ============================================================================
    5. 시작
    ========================================================================== */
-DB.load(); DB.seed(); render();
+DB.load(); DB.seed(); tryRestoreSession(); render();   /* 저장된 로그인 세션 복원 시도 */
 </script>
 </body>
 </html>
