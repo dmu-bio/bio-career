@@ -35,6 +35,8 @@
   .top .sp{flex:1}
   .top .sub{color:var(--sub);font-size:13px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px}
+  .backbar{margin:0 0 12px}
+  .backbar .btn{font-weight:700}
   h2{font-size:17px;margin:2px 0 12px}
   h3{font-size:15px;margin:16px 0 8px;color:var(--ink)}
   label{display:block;font-weight:700;margin:14px 0 6px}
@@ -733,27 +735,45 @@ function go(v){ if(v==='survey'){ stepIdx=0; invalid={}; showValidateMsg=false; 
 /* ============================================================================
    4. 렌더
    ========================================================================== */
+/* 상단 '뒤로/메뉴로' 네비 — 로그인·활동목록(hub)·미리보기 화면 제외한 모든 화면에 표시.
+   화면마다 자연스러운 목적지로: 대부분 활동 목록(hub), 세부 화면은 직전 단계로. */
+function backBar(){
+  if(VIEW==='login' || VIEW==='hub') return '';
+  if(isPreview()) return '';   /* 미리보기는 전용 컨트롤(미리보기 종료·활동 목록)이 이미 있음 */
+  var dest='hub', label='← 활동 목록';
+  if(SESS.role==='student'){
+    if(VIEW==='survey' || VIEW==='a2'){ dest='hub'; label='← 나가기 (활동 목록)'; }   /* 작성 화면 — '나가기'로 이탈임을 알림 */
+    else if(VIEW==='card'){ dest='home'; label='← 뒤로'; }
+  } else {
+    if(VIEW.indexOf('sc:')===0){ dest='groups'; label='← 트랙 그룹'; }
+    else if(VIEW.indexOf('a2v:')===0){ dest='a2list'; label='← 제출 현황'; }
+  }
+  return '<div class="backbar"><button class="btn sm gray" onclick="go(\''+dest+'\')">'+esc(label)+'</button></div>';
+}
 function render(){
   var el=document.getElementById('app');
   if(VIEW!=='a2pv') a2preview=false;   /* 미리보기 화면을 벗어나면 자동 해제 */
   if(VIEW==='login'){ el.innerHTML = viewLogin(); return; }
   var bar = topbar();
   if(VIEW==='hub'){ el.innerHTML = bar+viewHub(); return; }   /* 로그인 후 첫 화면 = 활동 목록 */
+  var back = backBar();
+  var body='';
   if(SESS.role==='student'){
-    if(VIEW==='consent') el.innerHTML = bar+viewConsent();
-    else if(VIEW==='home') el.innerHTML = bar+viewStudentHome();
-    else if(VIEW==='survey') el.innerHTML = bar+viewSurvey();
-    else if(VIEW==='a2') el.innerHTML = bar+viewA2Form();
-    else if(VIEW==='card') el.innerHTML = bar+viewProfileCard(SESS.student.id, true);
+    if(VIEW==='consent') body=viewConsent();
+    else if(VIEW==='home') body=viewStudentHome();
+    else if(VIEW==='survey') body=viewSurvey();
+    else if(VIEW==='a2') body=viewA2Form();
+    else if(VIEW==='card') body=viewProfileCard(SESS.student.id, true);
   } else {
-    if(VIEW==='dash') el.innerHTML = bar+viewDash();
-    else if(VIEW==='groups') el.innerHTML = bar+viewGroups();
-    else if(VIEW==='roster') el.innerHTML = bar+viewRoster();
-    else if(VIEW.indexOf('sc:')===0) el.innerHTML = bar+viewProfileCard(VIEW.slice(3), false);
-    else if(VIEW==='a2list') el.innerHTML = bar+viewA2List();
-    else if(VIEW==='a2pv') el.innerHTML = bar+viewA2Form();   /* 학생 화면 미리보기(읽기전용) */
-    else if(VIEW.indexOf('a2v:')===0) el.innerHTML = bar+viewA2Detail(VIEW.slice(4));
+    if(VIEW==='dash') body=viewDash();
+    else if(VIEW==='groups') body=viewGroups();
+    else if(VIEW==='roster') body=viewRoster();
+    else if(VIEW.indexOf('sc:')===0) body=viewProfileCard(VIEW.slice(3), false);
+    else if(VIEW==='a2list') body=viewA2List();
+    else if(VIEW==='a2pv') body=viewA2Form();   /* 학생 화면 미리보기(읽기전용) */
+    else if(VIEW.indexOf('a2v:')===0) body=viewA2Detail(VIEW.slice(4));
   }
+  el.innerHTML = bar + back + body;
 }
 
 function topbar(){
