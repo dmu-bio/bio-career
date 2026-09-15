@@ -799,6 +799,7 @@ function render(){
   } else {
     if(VIEW==='dash') body=viewDash();
     else if(VIEW==='groups') body=viewGroups();
+    else if(VIEW==='igroups') body=viewInterviewGroups();
     else if(VIEW==='roster') body=viewRoster();
     else if(VIEW.indexOf('sc:')===0) body=viewProfileCard(VIEW.slice(3), false);
     else if(VIEW==='a2list') body=viewA2List();
@@ -832,11 +833,12 @@ function topbar(){
       }).join('')+'</div>';
     }
     /* 하위 화면 탭 — 「활동(진로설문)」 내부에서만: 대시보드/트랙 그룹. 명단은 상단바 전역 메뉴로 분리됨. 카드(sc:)는 트랙그룹 계열 */
-    if(VIEW==='dash' || VIEW==='groups' || VIEW.indexOf('sc:')===0){
+    if(VIEW==='dash' || VIEW==='groups' || VIEW==='igroups' || VIEW.indexOf('sc:')===0){
       var cur=(VIEW.indexOf('sc:')===0)?'groups':VIEW;
       subnav = '<div class="subnav">'+
         '<button class="'+(cur==='dash'?'on':'')+'" onclick="go(\'dash\')">대시보드</button>'+
         '<button class="'+(cur==='groups'?'on':'')+'" onclick="go(\'groups\')">트랙 그룹</button>'+
+        '<button class="'+(cur==='igroups'?'on':'')+'" onclick="go(\'igroups\')">면담 그룹</button>'+
       '</div>';
     }
   }
@@ -1164,6 +1166,7 @@ function viewProfileCard(sid, self){
   var a=r.answers;
   function join(x){ return (x&&x.length)? (x.join? x.join(', ') : x) : '—'; }
   var rows='';
+  if(st && igOf(st)) rows+=kv('면담 그룹', igBadge(igOf(st))+' <span class="muted">'+esc(IGROUP[igOf(st)]||'')+'</span>');
   rows+=kv('진로 트랙','<span class="pill '+(TRACK[r.track]||'t-none')+'">'+r.track+'</span>'+(a.A2?' ('+join(a.A2)+')':''));
   rows+=kv('확신 정도', a.A4? a.A4+' / 5':'—');
   if(hasTrack(a,'취업')){
@@ -1407,6 +1410,33 @@ function barTable(obj, max){
   return '<table>'+rows+'</table>';
 }
 
+/* ---- 교수: 면담 그룹(1차 설문 기반 4그룹) ---- */
+var IGROUP={'1':'방향탐색','2':'QC·품질·분석','3':'생산·현장','4':'편입'};
+function igOf(st){ return (st&&st.interviewGroup)?String(st.interviewGroup):''; }
+function igBadge(g){ g=String(g||''); return g?'<span class="pill" style="background:#e8eefc;color:#22407a;border:1px solid #c9dbff">그룹'+g+'</span>':'<span class="muted">—</span>'; }
+function viewInterviewGroups(){
+  var studs=viewStudents();
+  var by={'1':[],'2':[],'3':[],'4':[]}, un=0;
+  studs.forEach(function(st){ var g=igOf(st); if(by[g]) by[g].push(st); else un++; });
+  var assigned=by['1'].length+by['2'].length+by['3'].length+by['4'].length;
+  var h='<div class="card"><h2>면담 그룹 <span class="hint">— 보기: '+classLabel(viewClass())+' · 배정 '+assigned+'명</span></h2>'+
+    '<p class="muted">1차 진로설문 응답을 바탕으로 나눈 <b>그룹 면담</b> 편성입니다. 취업/편입 대분류 후 준비도·직무가 비슷한 학생끼리 묶었습니다. (현재 F2반 대상)</p>'+
+    (assigned?'':'<p class="muted">이 보기에는 아직 면담 그룹이 배정된 학생이 없습니다.</p>');
+  ['1','2','3','4'].forEach(function(g){
+    var arr=by[g]; if(!arr.length) return;
+    h+='<h3>'+igBadge(g)+' <span style="margin-left:6px">'+IGROUP[g]+'</span> &nbsp;'+arr.length+'명</h3>'+
+      '<table><tr><th>반</th><th>이름</th><th>학번</th><th>트랙</th><th></th></tr>'+
+      arr.map(function(st){ var r=DB.response(st.id);
+        var trk=isEarly(st)?'조기취업':(r?r.track:'미응답');
+        return '<tr><td>'+st.klass+'</td><td>'+esc(st.name)+'</td><td>'+esc(st.no)+'</td>'+
+          '<td>'+((r&&!isEarly(st))?'<span class="pill '+(TRACK[r.track]||'t-none')+'">'+esc(trk)+'</span>':'<span class="muted">'+esc(trk)+'</span>')+'</td>'+
+          '<td>'+(r?'<button class="btn sm gray" onclick="go(\'sc:'+st.id+'\')">카드</button>':'')+'</td></tr>';
+      }).join('')+'</table>';
+  });
+  if(un){ h+='<p class="muted" style="margin-top:12px">그룹 미배정 '+un+'명 (1차 설문 미응답 등 — [수강생 명단]에서 확인).</p>'; }
+  return h+'</div>';
+}
+
 /* ---- 교수: 트랙별 그룹화 ---- */
 function viewGroups(){
   var order=['취업','편입','창업','병행','미정'];
@@ -1505,14 +1535,14 @@ function viewRoster(){
     h+='<p class="muted" style="margin:16px 0">이 반은 아직 등록된 학생이 없습니다. '+(sup?'위 [출석부/명단 등록]으로 추가하세요.':'슈퍼관리자가 출석부를 등록하면 표시됩니다.')+'</p></div>';
     return h;
   }
-  h+='<table><tr><th>반</th><th>이름</th><th>학번</th><th>동의</th><th>설문</th><th>조기취업</th><th>취업처·비고</th>'+(sup?'<th>관리</th>':'')+'</tr>'+
+  h+='<table><tr><th>반</th><th>이름</th><th>학번</th><th>그룹</th><th>동의</th><th>설문</th><th>조기취업</th><th>취업처·비고</th>'+(sup?'<th>관리</th>':'')+'</tr>'+
     studs.map(function(st){
       if(sup && editSid===st.id){
         return '<tr style="background:#fff6e6">'+
           '<td><select id="edKlass_'+st.id+'">'+classOptions(st.klass)+'</select></td>'+
           '<td><input id="edName_'+st.id+'" value="'+esc(st.name)+'" style="width:90px"></td>'+
           '<td><input id="edNo_'+st.id+'" value="'+esc(st.no)+'" style="width:120px"></td>'+
-          '<td colspan="4" class="muted">수정 중…</td>'+
+          '<td colspan="5" class="muted">수정 중…</td>'+
           '<td><button class="btn sm" onclick="saveEdit(\''+st.id+'\')">저장</button> <button class="btn sm gray" onclick="cancelEdit()">취소</button></td></tr>';
       }
       var r=DB.response(st.id), e=isEarly(st), can=canManage(st);
@@ -1527,6 +1557,7 @@ function viewRoster(){
       var manage = sup? '<td><button class="btn sm gray" onclick="startEdit(\''+st.id+'\')">수정</button> '+
           '<button class="btn sm" style="background:var(--bad)" onclick="confirmDeleteStudent(\''+st.id+'\')">삭제</button></td>' : '';
       return '<tr><td>'+st.klass+'</td><td>'+esc(st.name)+'</td><td>'+esc(st.no)+'</td>'+
+        '<td title="'+(igOf(st)?esc(IGROUP[igOf(st)]||''):'')+'">'+igBadge(igOf(st))+'</td>'+
         '<td>'+consent+'</td>'+
         '<td>'+status+'</td>'+
         '<td style="text-align:center" title="'+(can?'':'다른 반은 열람만')+'">'+chk+'</td>'+
@@ -2009,7 +2040,7 @@ function apiCall(action, params){
     body:JSON.stringify(Object.assign({action:action, token:sessionStorage.getItem(TOKENKEY)||''}, params||{}))
   }).then(function(r){ return r.json().then(function(j){ return {status:r.status, j:j}; }); });
 }
-function mapStudent(s){ return {id:s.id, name:s.name, no:s.no, klass:s.klass, earlyEmployed:!!s.early_employed, earlyCompany:s.early_company||'', consent: s.consent_at?{agreed:true, at:s.consent_at}:undefined}; }
+function mapStudent(s){ return {id:s.id, name:s.name, no:s.no, klass:s.klass, interviewGroup:s.interview_group||'', earlyEmployed:!!s.early_employed, earlyCompany:s.early_company||'', consent: s.consent_at?{agreed:true, at:s.consent_at}:undefined}; }
 function mapResp(r){ return {id:r.id, student_id:r.student_id, klass:r.klass, track:r.track, answers:r.answers||{}, submitted_at:r.submitted_at}; }
 function applyBootstrap(d){
   if(d.classes && d.classes.length){ CLASSES = d.classes.map(function(c){ return {id:c.id, prof:c.prof||''}; }); }
