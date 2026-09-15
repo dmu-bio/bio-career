@@ -178,7 +178,7 @@ var PROFS = SEED_PROFS;   /* 로그인 대조용 계정 — local(?demo=1)이면
 var ACTIVITIES = [
   { n:1, name:'진로 설문', key:'survey', active:true },
   { n:2, name:'2차 활동', key:'assets', active:false },
-  { n:3, name:'3차 활동', active:false },
+  { n:3, name:'그룹 면담지', key:'interview', active:false },
   { n:4, name:'4차 활동', active:false },
   { n:5, name:'5차 활동', active:false },
   { n:6, name:'6차 활동', active:false },
@@ -213,7 +213,7 @@ function classLabel(c){ if(c==='ALL') return '전체'; var p=profOfClass(c); ret
    ========================================================================== */
 var LSKEY='biocareer_deploy_v1';  /* 배포 빌드 로컬 테스트 저장키 */
 var DB = {
-  d:{ students:[], responses:[], interviews:[], activity2:[] },
+  d:{ students:[], responses:[], interviews:[], activity2:[], activity3:[] },
   load:function(){ try{ var r=localStorage.getItem(LSKEY); if(r) this.d=JSON.parse(r); }catch(e){} },
   save:function(){ if(SESS&&SESS.previewAsStudent) return; try{ localStorage.setItem(LSKEY, JSON.stringify(this.d)); }catch(e){} },
   seed:function(){
@@ -238,6 +238,14 @@ var DB = {
     var r=this.activity2Of(sid);
     if(r){ r.assets=payload.assets; r.pros=payload.pros; r.cons=payload.cons; r.photos=payload.photos; r.klass=klass; r.submitted_at=now(); }
     else this.d.activity2.push({ id:'a2_'+(this.d.activity2.length+1), student_id:sid, klass:klass, assets:payload.assets, pros:payload.pros, cons:payload.cons, photos:payload.photos, submitted_at:now() });
+    this.save();
+  },
+  activity3Of:function(sid){ if(SESS&&SESS.previewAsStudent&&sid===PV_SID) return pvData.activity3||undefined; return (this.d.activity3||[]).filter(function(r){return r.student_id===sid;})[0]; },
+  saveActivity3Local:function(sid, klass, group, payload){
+    if(!this.d.activity3) this.d.activity3=[];
+    var r=this.activity3Of(sid);
+    if(r){ r.group=group; r.answers=payload.answers; r.klass=klass; r.submitted_at=now(); }
+    else this.d.activity3.push({ id:'a3_'+(this.d.activity3.length+1), student_id:sid, klass:klass, group:group, answers:payload.answers, submitted_at:now() });
     this.save();
   },
   saveResponse:function(sid, track, answers){
@@ -732,7 +740,7 @@ var SESS = { role:null, student:null, prof:null, classView:'ALL' };   // role: '
    교수가 학생이 로그인 후 보는 화면 전체를 학생 관점으로 둘러보는 체험 모드.
    가상(예시) 학생 컨텍스트로 렌더하며, 어떤 제출·저장도 서버/localStorage에 반영되지 않는다. */
 var PV_SID='__preview__';
-var pvData={ response:null, activity2:null };   /* 미리보기 전용 인메모리 — 서버·localStorage에 절대 저장 안 됨 */
+var pvData={ response:null, activity2:null, activity3:null };   /* 미리보기 전용 인메모리 — 서버·localStorage에 절대 저장 안 됨 */
 function isPreview(){ return !!(SESS && SESS.previewAsStudent); }
 function enterStudentPreview(){
   if(SESS.role!=='prof'){ return; }
@@ -740,13 +748,13 @@ function enterStudentPreview(){
   SESS.pvProf=SESS.prof; SESS.pvClassView=SESS.classView; SESS.pvReturn=VIEW;
   SESS.previewAsStudent=true; SESS.role='student'; SESS.prof=null;
   SESS.student={ id:PV_SID, name:'예시 학생', no:'00000000', klass:kl, __preview:true };
-  pvData={ response:null, activity2:null }; draft={}; a2draft=a2Empty();
+  pvData={ response:null, activity2:null, activity3:null }; draft={}; a2draft=a2Empty(); a3draft=a3Empty();
   toast('👁 학생 화면 미리보기 — 저장되지 않습니다.'); go('hub');
 }
 function exitStudentPreview(){
   SESS.role='prof'; SESS.prof=SESS.pvProf||SESS.prof; SESS.student=null;
   SESS.classView=SESS.pvClassView||SESS.classView||'ALL'; SESS.previewAsStudent=false;
-  pvData={ response:null, activity2:null }; draft={}; a2draft=a2Empty();
+  pvData={ response:null, activity2:null, activity3:null }; draft={}; a2draft=a2Empty(); a3draft=a3Empty();
   var back=SESS.pvReturn||'hub'; SESS.pvProf=null; SESS.pvReturn=null; go(back);
 }
 var VIEW = 'login';
@@ -774,17 +782,19 @@ function backBar(){
   if(isPreview()) return '';   /* 미리보기는 전용 컨트롤(미리보기 종료·활동 목록)이 이미 있음 */
   var dest='hub', label='← 활동 목록';
   if(SESS.role==='student'){
-    if(VIEW==='survey' || VIEW==='a2'){ dest='hub'; label='← 나가기 (활동 목록)'; }   /* 작성 화면 — '나가기'로 이탈임을 알림 */
+    if(VIEW==='survey' || VIEW==='a2' || VIEW==='a3'){ dest='hub'; label='← 나가기 (활동 목록)'; }   /* 작성 화면 — '나가기'로 이탈임을 알림 */
     else if(VIEW==='card'){ dest='home'; label='← 뒤로'; }
   } else {
     if(VIEW.indexOf('sc:')===0){ dest='groups'; label='← 트랙 그룹'; }
     else if(VIEW.indexOf('a2v:')===0){ dest='a2list'; label='← 제출 현황'; }
+    else if(VIEW.indexOf('a3v:')===0){ dest='a3list'; label='← 제출 현황'; }
   }
   return '<div class="backbar"><button class="btn sm gray" onclick="go(\''+dest+'\')">'+esc(label)+'</button></div>';
 }
 function render(){
   var el=document.getElementById('app');
   if(VIEW!=='a2pv') a2preview=false;   /* 미리보기 화면을 벗어나면 자동 해제 */
+  if(VIEW!=='a3pv') a3preview=false;
   if(VIEW==='login'){ el.innerHTML = viewLogin(); return; }
   var bar = topbar();
   if(VIEW==='hub'){ el.innerHTML = bar+viewHub(); return; }   /* 로그인 후 첫 화면 = 활동 목록 */
@@ -795,6 +805,7 @@ function render(){
     else if(VIEW==='home') body=viewStudentHome();
     else if(VIEW==='survey') body=viewSurvey();
     else if(VIEW==='a2') body=viewA2Form();
+    else if(VIEW==='a3') body=viewA3Form();
     else if(VIEW==='card') body=viewProfileCard(SESS.student.id, true);
   } else {
     if(VIEW==='dash') body=viewDash();
@@ -805,6 +816,9 @@ function render(){
     else if(VIEW==='a2list') body=viewA2List();
     else if(VIEW==='a2pv') body=viewA2Form();   /* 학생 화면 미리보기(읽기전용) */
     else if(VIEW.indexOf('a2v:')===0) body=viewA2Detail(VIEW.slice(4));
+    else if(VIEW==='a3list') body=viewA3List();
+    else if(VIEW==='a3pv') body=viewA3Form();   /* 학생 화면 미리보기(읽기전용) */
+    else if(VIEW.indexOf('a3v:')===0) body=viewA3Detail(VIEW.slice(4));
   }
   el.innerHTML = bar + back + body;
 }
@@ -893,7 +907,7 @@ function doLogin(){
   draft = (DB.response(st.id)||{}).answers ? JSON.parse(JSON.stringify(DB.response(st.id).answers)) : {};
   saveSession(); go('hub');
 }
-function logout(){ try{ sessionStorage.removeItem(TOKENKEY); }catch(e){} clearSession(); SESS={role:null,student:null,prof:null,classView:'ALL'}; draft={}; if(MODE==='remote'){ DB.d={students:[],responses:[],interviews:[],activity2:[]}; } go('login'); }
+function logout(){ try{ sessionStorage.removeItem(TOKENKEY); }catch(e){} clearSession(); SESS={role:null,student:null,prof:null,classView:'ALL'}; draft={}; if(MODE==='remote'){ DB.d={students:[],responses:[],interviews:[],activity2:[],activity3:[]}; } go('login'); }
 
 /* ---- 개인정보 수집·이용 동의 (설문 진입 전) ---- */
 function viewConsent(){
@@ -962,6 +976,13 @@ function openActivity(n){
     consentNext='a2';
     if(!hasConsent(SESS.student)) go('consent');          /* 미동의 → 개인정보 동의 먼저 */
     else go('a2');
+  } else if(act.key==='interview'){
+    if(SESS.role!=='student'){ go('a3list'); return; }    /* 교수 = 3차 활동 제출 현황 */
+    if(!igOf(SESS.student)){ go('a3'); return; }           /* 그룹 미배정 → 안내만(동의 불필요) */
+    a3draft = a3FromResponse(DB.activity3Of(SESS.student.id));   /* 재제출 프리필 */
+    consentNext='a3';
+    if(!hasConsent(SESS.student)) go('consent');          /* 미동의 → 개인정보 동의 먼저 */
+    else go('a3');
   }
 }
 
@@ -1963,6 +1984,343 @@ function toggleActivity(n){
   }
   act.active=to; toast(n+'차 활동을 '+(to?'열었습니다':'닫았습니다')+'.'); render();
 }
+/* ============================================================================
+   4-C. 3차 활동 — 그룹별 면담지 (2026-09-15 추가)
+     · 학생은 본인 면담 그룹(1~4)에 맞는 면담지만 본다: [공통 3] + [그룹 맞춤 4] + [마무리 3].
+     · 그룹 미배정(F1·F3 전원, 미응답 F2 등)은 안내만 표시하고 작성 폼은 열지 않는다.
+     · 저장 구조는 2차와 분리(activity3_response, 응답은 jsonb). RLS·Edge 경유는 2차와 동일.
+     · 질문 뒤 괄호의 「의도(진행자 참고용)」는 학생 화면·저장·다운로드 어디에도 넣지 않는다(문항 텍스트만).
+   ========================================================================== */
+var IV_COMMON=[
+  { id:'cm1', type:'radio', opts:['명확히 정함','대략 정함','아직 못 정함'],
+    text:'졸업까지 남은 한 학기 동안의 진로 목표는 얼마나 정해졌나요?',
+    fu:'정했다면 그 목표를 한 문장으로 말해볼까요? (취업: 목표 기업·직무 / 편입: 목표 대학) 아직이면 무엇이 걸리나요?' },
+  { id:'cm2', type:'text',
+    text:'그 목표를 위해 지금 가장 급하게 해결해야 할 과제 한 가지는 무엇인가요?' },
+  { id:'cm3', type:'scale',
+    text:'지금 진로 준비도는 스스로 몇 점인가요? (1 매우 낮음 ~ 5 매우 높음)',
+    fu:'그 점수를 매긴 이유는 무엇이고, 그 과제에서 교수·학과의 도움이 필요한 지점은 무엇인가요?' }
+];
+var IV_GROUP={
+  '1':{ label:'방향 탐색형 (취업)', qs:[
+    { id:'g1a', type:'text', text:'지금 마음에 남는 진로 후보를 현실적으로 2~3개만 꼽는다면 무엇인가요?' },
+    { id:'g1b', type:'radio', opts:['있다(바로 착수 가능)','일부 있다','없다'],
+      text:'그 후보 중 지금 당장 지원하거나 준비를 시작할 수 있는 것이 있나요?',
+      fu:'있다면 무엇부터 시작할 수 있나요? 없다면 무엇이 준비되면 시작할 수 있나요?' },
+    { id:'g1c', type:'radio', opts:['정보 부족','자신감 부족','경험 부족','기타'], etc:true,
+      text:'방향을 아직 못 정하게 막는 가장 큰 요인은 무엇인가요?',
+      fu:'그 요인을 이번 학기에 어떻게 없앨 수 있을까요?' },
+    { id:'g1d', type:'text', text:'남은 한 학기 안에 후보를 하나로 좁히기 위해 반드시 마무리할 일 한 가지는 무엇인가요?' }
+  ]},
+  '2':{ label:'QC·품질·분석형 (취업)', qs:[
+    { id:'g2a', type:'radio', opts:['확정','대략','미정'],
+      text:'목표 직무(QC·QA·분석)와 지원할 기업·분야는 확정되었나요?',
+      fu:'확정이면 어디에 지원할지, 아직이면 무엇이 걸리는지 말해볼까요?' },
+    { id:'g2b', type:'radio', opts:['거의 완성','절반 정도','아직 시작 못 함'],
+      text:'자기소개서·이력서는 어디까지 준비됐나요?',
+      fu:'지금 지원 가능한 공고가 있나요? 서류를 마무리하려면 무엇이 남았나요?' },
+    { id:'g2c', type:'radio', opts:['취득 완료','준비 중','아직 시작 안 함'],
+      text:'필요한 자격증·어학은 어디까지 진행됐나요?',
+      fu:'남은 학기에 무엇을 끝내야 하나요?' },
+    { id:'g2d', type:'text', text:'곧 있을 서류·면접에서 가장 자신 없는 부분은 무엇이고, 어떤 준비가 필요한가요?' }
+  ]},
+  '3':{ label:'생산·현장/비실험형 (취업)', qs:[
+    { id:'g3a', type:'radio', opts:['구체적으로 정함','방향만 정함','아직'],
+      text:'지원할 직무(생산·공정 등)와 기업은 정해졌나요?',
+      fu:'정한 만큼 말해보고, 남은 부분은 무엇을 알아봐야 할까요?' },
+    { id:'g3b', type:'checkbox', opts:['화학분석','위험물','산업안전','현장실습 경험','기타'], etc:true,
+      text:'보유한 자격·경험에 해당하는 것을 모두 골라볼까요?',
+      fu:'고른 자원을 자기소개서에 어떻게 녹일지 정리해봤나요?' },
+    { id:'g3c', type:'text', text:'(실험 외 진로 탐색자에게) 목표 직무를 한 문장으로 정하고, 전공을 그 길에서 어떻게 살릴지 말해볼까요?' },
+    { id:'g3d', type:'text', text:'남은 학기에 지원·서류를 위해 반드시 마무리할 일 한 가지는 무엇인가요?' }
+  ]},
+  '4':{ label:'편입 그룹 (편입)', qs:[
+    { id:'g4a', type:'radio', opts:['확정','고민 중','미정'],
+      text:'지원할 대학과 전형(일반·연계)은 확정됐나요?',
+      fu:'확정이면 원서 접수 일정을 확인했나요? 아직이면 무엇을 먼저 정해야 하나요?' },
+    { id:'g4b', type:'radio', opts:['자기소개서','영어 성적','학점','기타'], etc:true,
+      text:'자기소개서·영어(공인성적)·학점 중 지금 가장 급한 것은 무엇인가요?',
+      fu:'그것을 마감까지 어떻게 끝낼 계획인가요?' },
+    { id:'g4c', type:'text', text:'전공을 바꾸는 편입이라면, 지금 당장 확인해야 할 요건은 무엇인가요?' },
+    { id:'g4d', type:'text', text:'(대학원·연구 진로 희망자에게) 편입 이후 대학원까지 병행할지, 이번 준비에 무엇을 더할지 정리해볼까요?' }
+  ]}
+};
+var IV_CLOSING=[
+  { id:'cl1', type:'text', text:'오늘 정리된 것 중 가장 급한 과제 한 가지를 무엇으로 확정할까요?' },
+  { id:'cl2', type:'text', text:'다음 면담까지 반드시 끝낼 일 1~2개를 정한다면 무엇인가요?' },
+  { id:'cl3', type:'scale',
+    text:'오늘 면담을 마친 지금, 목표에 대한 확신은 어느 정도인가요? (1 아직 흐릿 ~ 5 매우 뚜렷)',
+    fu:'그 목표와 다음 할 일을 이루는 데 교수·학과의 지원이 필요한 부분이 있나요?' }
+];
+var IV_BYID=(function(){ var m={}; IV_COMMON.forEach(function(q){m[q.id]=q;}); Object.keys(IV_GROUP).forEach(function(g){IV_GROUP[g].qs.forEach(function(q){m[q.id]=q;});}); IV_CLOSING.forEach(function(q){m[q.id]=q;}); return m; })();
+function ivGroupLabel(g){ return (IV_GROUP[g]?IV_GROUP[g].label:''); }
+function ivQuestionsFor(g){ var a=IV_COMMON.slice(); if(IV_GROUP[g]) a=a.concat(IV_GROUP[g].qs); return a.concat(IV_CLOSING); }
+
+var a3draft=a3Empty(), a3invalid={}, a3showErr=false, a3preview=false, a3pvGroup='1';
+var a3view={ sid:null, row:null, loading:false };
+var IVOPT='display:inline-block;margin:4px 6px 4px 0;padding:7px 14px;border:1px solid var(--line);border-radius:18px;background:#fff;cursor:pointer;font-size:14px';
+var IVOPT_ON=IVOPT+';background:#123a8f;color:#fff;border-color:#123a8f;font-weight:700';
+var IVNUM='display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;margin:4px 8px 4px 0;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;font-size:16px;font-weight:600';
+var IVNUM_ON=IVNUM+';background:#123a8f;color:#fff;border-color:#123a8f';
+function a3Empty(){ return { answers:{} }; }
+function a3FromResponse(r){ var d=a3Empty(); if(r&&r.answers){ try{ d.answers=JSON.parse(JSON.stringify(r.answers)); }catch(e){ d.answers={}; } } return d; }
+function a3StudentGroup(){ return (SESS&&SESS.student)? igOf(SESS.student) : ''; }
+function a3ActiveGroup(){ return isPreview()? a3pvGroup : a3StudentGroup(); }
+/* 입력 핸들러 — 텍스트는 재렌더 없이 draft만 갱신(포커스 유지), 선택은 재렌더 */
+function setA3T(id,v){ a3draft.answers[id]=v; if((''+v).trim()!=='') delete a3invalid[id]; }
+function setA3Ropt(id,idx){ var q=IV_BYID[id]; if(!q)return; a3draft.answers[id]=q.opts[idx]; delete a3invalid[id]; render(); }
+function setA3Scale(id,n){ a3draft.answers[id]=n; delete a3invalid[id]; render(); }
+function toggleA3Copt(id,idx){ var q=IV_BYID[id]; if(!q)return; var o=q.opts[idx]; var a=a3draft.answers[id]; if(!Array.isArray(a)) a=[]; else a=a.slice(); var p=a.indexOf(o); if(p>=0)a.splice(p,1); else a.push(o); a3draft.answers[id]=a; delete a3invalid[id]; render(); }
+function a3SetPvGroup(g){ a3pvGroup=g; render(); }
+
+function a3QCard(q, num){
+  var a=a3draft.answers, cur=a[q.id];
+  var h='<div class="qcard"><div class="qhead"><span class="qbadge">'+num+'</span><span>'+esc(q.text)+'</span></div>';
+  if(q.type==='radio'){
+    h+='<div>'+q.opts.map(function(o,i){ var on=(cur===o); return '<button type="button" style="'+(on?IVOPT_ON:IVOPT)+'" onclick="setA3Ropt(\''+q.id+'\','+i+')">'+esc(o)+'</button>'; }).join('')+'</div>';
+    if(q.etc && cur && cur.indexOf('기타')===0){ h+='<input type="text" style="margin-top:8px" placeholder="기타 내용을 적어 주세요" value="'+esc(a[q.id+'_etc']||'')+'" oninput="setA3T(\''+q.id+'_etc\',this.value)">'; }
+  } else if(q.type==='checkbox'){
+    var arr=Array.isArray(cur)?cur:[];
+    h+='<div>'+q.opts.map(function(o,i){ var on=(arr.indexOf(o)>=0); return '<button type="button" style="'+(on?IVOPT_ON:IVOPT)+'" onclick="toggleA3Copt(\''+q.id+'\','+i+')">'+(on?'✓ ':'')+esc(o)+'</button>'; }).join('')+'</div>';
+    if(q.etc && arr.indexOf('기타')>=0){ h+='<input type="text" style="margin-top:8px" placeholder="기타 내용을 적어 주세요" value="'+esc(a[q.id+'_etc']||'')+'" oninput="setA3T(\''+q.id+'_etc\',this.value)">'; }
+  } else if(q.type==='scale'){
+    h+='<div>'+[1,2,3,4,5].map(function(n){ var on=(String(cur)===String(n)); return '<button type="button" style="'+(on?IVNUM_ON:IVNUM)+'" onclick="setA3Scale(\''+q.id+'\','+n+')">'+n+'</button>'; }).join('')+'</div>';
+  } else {
+    h+='<textarea oninput="setA3T(\''+q.id+'\',this.value)" placeholder="자유롭게 작성해 주세요">'+esc(cur||'')+'</textarea>';
+  }
+  if(q.fu){
+    h+='<div style="margin-top:10px"><div class="hint" style="margin-bottom:2px">→ '+esc(q.fu)+'</div><textarea oninput="setA3T(\''+q.id+'_f\',this.value)" placeholder="이어서 작성해 주세요">'+esc(a[q.id+'_f']||'')+'</textarea></div>';
+  }
+  return h+'</div>';
+}
+function viewA3Form(){
+  var pv=isPreview();
+  var group=a3ActiveGroup();
+  if(!pv && !group){
+    return '<div class="card"><h2>3차 활동 — 그룹 면담지</h2>'+
+      '<div class="note" style="margin:12px 0;background:#fff6e6;border-color:#f0d79a">🔔 <b>면담 그룹 배정 후 이용 가능합니다.</b><br>이 활동은 그룹 면담용 질문지입니다. 담당 교수님이 면담 그룹을 배정하면 여기에서 작성할 수 있습니다.</div>'+
+      '<div class="navrow"><div><button class="btn gray" onclick="go(\'hub\')">← 활동 목록</button></div><div></div></div></div>';
+  }
+  var editing=!pv && !!DB.activity3Of(SESS.student.id);
+  var h='<div class="card"><h2>3차 활동 — 그룹 면담지'+(pv?' <span class="hint">(학생 화면 미리보기)</span>':'')+'</h2>';
+  if(pv){
+    h+='<div class="validbanner" style="background:#eef4ff;border-color:#c9dbff;color:#22407a">👁 <b>학생 화면 미리보기</b> — 학생이 실제로 보는 면담지입니다. 입력·제출해도 <b>저장되지 않습니다</b>. 아래 버튼으로 그룹을 바꿔 각 그룹 면담지를 미리 볼 수 있습니다.</div>';
+    h+='<div style="margin:8px 0">'+['1','2','3','4'].map(function(g){ var on=(a3pvGroup===g); return '<button type="button" style="'+(on?IVOPT_ON:IVOPT)+'" onclick="a3SetPvGroup(\''+g+'\')">그룹'+g+' · '+esc(IV_GROUP[g].label)+'</button>'; }).join('')+'</div>';
+  }
+  h+='<div class="note" style="margin:8px 0">🗓 졸업 전 진로 실행을 점검하는 <b>그룹 면담지</b>입니다. 오늘 면담의 목적(졸업 전 진로 실행 점검)과 남은 기간(약 한 학기)을 떠올리며 작성해 주세요. 아래는 <b>'+esc(ivGroupLabel(group))+'</b> 그룹용입니다. <b>활동이 열려 있는 동안 언제든 다시 열어 수정·저장</b>할 수 있습니다.</div>';
+  if(editing) h+='<div class="note" style="background:#eef4ff;border-color:#c9dbff">✏️ 이미 제출한 내용을 <b>수정하는 중</b>입니다. 바꾼 뒤 아래 [수정 저장]을 누르세요.</div>';
+  if(a3showErr) h+='<div class="validbanner">⚠️ 아직 아무 문항도 작성하지 않았습니다. 한 문항 이상 작성한 뒤 제출해 주세요.</div>';
+  h+='<fieldset style="border:none;padding:0;margin:0;min-width:0">';
+  var num=0;
+  h+='<h3>① 공통 질문 · 진로 목표와 최우선 과제</h3>';
+  IV_COMMON.forEach(function(q){ num++; h+=a3QCard(q,num); });
+  h+='<h3>② 그룹 맞춤 질문 — '+esc(ivGroupLabel(group))+'</h3>';
+  (IV_GROUP[group]?IV_GROUP[group].qs:[]).forEach(function(q){ num++; h+=a3QCard(q,num); });
+  h+='<h3>③ 마무리 · 다음 면담까지 할 일 정하기</h3>';
+  IV_CLOSING.forEach(function(q){ num++; h+=a3QCard(q,num); });
+  h+='</fieldset>';
+  h+='<div class="row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">'+
+     '<button class="btn sm gray" onclick="a3DownloadStudentDoc()">⬇ 내 면담지 워드(.docx)</button>'+
+     '<button class="btn sm gray" onclick="a3PrintStudent()">🖨 내 면담지 PDF(인쇄)</button>'+
+     '<span class="hint">지금 화면에 작성한 내용을 파일로 저장합니다.</span></div>'+
+     '<div class="navrow"><div><button class="btn gray" onclick="go(\'hub\')">취소</button></div>'+
+     '<div><button class="btn" onclick="submitA3()">'+(editing?'수정 저장':'제출')+'</button></div></div>';
+  return h+'</div>';
+}
+function a3HasAny(){
+  var a=a3draft.answers; for(var k in a){ if(!a.hasOwnProperty(k))continue; var v=a[k];
+    if(Array.isArray(v)){ if(v.length) return true; } else if(v!=null && (''+v).trim()!=='') return true; }
+  return false;
+}
+function submitA3(){
+  if(!a3HasAny()){ a3showErr=true; render(); window.scrollTo(0,0); return; }
+  a3showErr=false;
+  var group=a3StudentGroup();
+  var payload={ group:group, answers:a3draft.answers };
+  if(isPreview()){ pvData.activity3={ student_id:PV_SID, klass:SESS.student.klass, group:group, answers:payload.answers, submitted_at:now() }; toast('👁 미리보기 — 실제로 저장되지 않았습니다.'); go('hub'); return; }
+  if(MODE==='remote'){
+    if(submitting) return; submitting=true; toast('제출 중…');
+    apiCall('saveActivity3', payload).then(function(res){
+      submitting=false;
+      if(!res.j || res.j.ok!==true){ toast((res.j&&res.j.error)||'서버 저장에 실패했습니다. 잠시 후 다시 제출해 주세요.'); return; }
+      DB.saveActivity3Local(SESS.student.id, SESS.student.klass, group, payload);
+      toast('제출되었습니다.'); go('hub');
+    }).catch(function(){ submitting=false; toast('서버 연결에 실패했습니다. 잠시 후 다시 제출해 주세요.'); });
+    return;
+  }
+  DB.saveActivity3Local(SESS.student.id, SESS.student.klass, group, payload);
+  toast('제출되었습니다.'); go('hub');
+}
+/* ── 3차 활동 다운로드(학생 본인 / 교수) · 한글 안전(a2와 동일 방식) ── */
+function a3RowFromDraft(){ return { group:a3StudentGroup(), answers:a3draft.answers }; }
+function a3NormRow(d, st){ return { group:(d.group||d.igroup||igOf(st)||''), answers:d.answers||{} }; }
+function a3AnsText(q, ans){
+  var v=ans[q.id];
+  if(q.type==='checkbox'){ var arr=Array.isArray(v)?v.slice():[]; if(q.etc){ var ix=arr.indexOf('기타'); if(ix>=0 && ans[q.id+'_etc']) arr[ix]='기타: '+ans[q.id+'_etc']; } return arr.length?arr.join(', '):''; }
+  if(q.type==='radio'){ var s=(v==null?'':String(v)); if(q.etc && s.indexOf('기타')===0 && ans[q.id+'_etc']) s='기타: '+ans[q.id+'_etc']; return s; }
+  if(q.type==='scale'){ return v==null||v===''?'':(String(v)+' / 5'); }
+  return v==null?'':String(v);
+}
+function a3SecHtml(title, qs, ans){
+  var h='<h2 style="font-size:13pt;border-bottom:1px solid #999;padding-bottom:2px">'+esc(title)+'</h2>';
+  qs.forEach(function(q){ var main=a3AnsText(q,ans), fu=ans[q.id+'_f'];
+    h+='<div style="margin:0 0 10px"><b>'+esc(q.text)+'</b>'+
+       '<div style="margin-left:12px"><b>답:</b> <span style="white-space:pre-wrap">'+esc(main||'—')+'</span></div>'+
+       (q.fu?('<div style="margin-left:12px"><b>→</b> '+esc(q.fu)+'<br><span style="white-space:pre-wrap">'+esc(fu||'—')+'</span></div>'):'')+
+       '</div>';
+  });
+  return h;
+}
+function a3BodyHtml(row, st){
+  row=row||{}; st=st||{}; var ans=row.answers||{}; var g=row.group||igOf(st)||'';
+  var h='<h1 style="font-size:18pt;margin:0 0 4px">3차 활동 — 그룹 면담지</h1>'+
+    '<p style="color:#555;margin:0 0 2px">'+esc(st.name||'')+' · 학번 '+esc(st.no||'')+' · '+esc(st.klass||'')+'반</p>'+
+    '<p style="color:#555;margin:0 0 14px">면담 그룹: '+(g?('그룹'+g+' '+esc(ivGroupLabel(g))):'미배정')+'</p>';
+  h+=a3SecHtml('① 공통 질문 · 진로 목표와 최우선 과제', IV_COMMON, ans);
+  h+=a3SecHtml('② 그룹 맞춤 질문 — '+ivGroupLabel(g), (IV_GROUP[g]?IV_GROUP[g].qs:[]), ans);
+  h+=a3SecHtml('③ 마무리 · 다음 면담까지 할 일 정하기', IV_CLOSING, ans);
+  return h;
+}
+function a3Print(row, st){
+  var body=a3BodyHtml(row, st);
+  var w=window.open('','_blank');
+  if(!w){ toast('팝업이 막혔습니다 — 브라우저에서 팝업을 허용한 뒤 다시 시도하세요.'); return; }
+  w.document.write('<html><head><meta charset="utf-8"><title>bio_activity3_'+esc((st&&st.no)||'student')+'</title>'+
+    '<style>body{font-family:"맑은 고딕",sans-serif;font-size:11pt;line-height:1.6;padding:24px;color:#111}h1,h2{font-family:"맑은 고딕",sans-serif}</style></head>'+
+    '<body>'+body+'</body></html>');
+  w.document.close(); w.focus();
+  setTimeout(function(){ try{ w.print(); }catch(e){} }, 400);
+}
+function a3Docx(row, st){
+  row=row||{}; st=st||{}; var ans=row.answers||{}; var g=row.group||igOf(st)||'';
+  var P='';
+  P+=dPara('3차 활동 — 그룹 면담지', {bold:true, sz:32, after:60});
+  P+=dPara((st.name||'')+' · 학번 '+(st.no||'')+' · '+(st.klass||'')+'반', {sz:20, after:40});
+  P+=dPara('면담 그룹: '+(g?('그룹'+g+' '+ivGroupLabel(g)):'미배정'), {sz:20, after:200});
+  function sec(title, qs){
+    P+=dPara(title, {bold:true, sz:26, after:80});
+    qs.forEach(function(q){
+      P+=dPara(q.text, {bold:true, after:40});
+      P+=dPara('· 답: '+(a3AnsText(q,ans)||'—'), {after:(q.fu?40:170)});
+      if(q.fu) P+=dPara('· '+q.fu+' → '+(ans[q.id+'_f']||'—'), {after:170});
+    });
+  }
+  sec('① 공통 질문 · 진로 목표와 최우선 과제', IV_COMMON);
+  sec('② 그룹 맞춤 질문 — '+ivGroupLabel(g), (IV_GROUP[g]?IV_GROUP[g].qs:[]));
+  sec('③ 마무리 · 다음 면담까지 할 일 정하기', IV_CLOSING);
+  var doc='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'+P+
+    '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>'+
+    '</w:body></w:document>';
+  var ct='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
+    '<Default Extension="xml" ContentType="application/xml"/>'+
+    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'+
+    '</Types>';
+  var rels='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
+  return xlZip([
+    {name:'[Content_Types].xml', data:xlUtf8(ct)},
+    {name:'_rels/.rels', data:xlUtf8(rels)},
+    {name:'word/document.xml', data:xlUtf8(doc)}
+  ]);
+}
+function a3DownloadDoc(row, st){
+  try{ var bytes=a3Docx(row, st);
+    var b=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+    var u=URL.createObjectURL(b), a=document.createElement('a'); a.href=u; a.download='bio_activity3_'+((st&&st.no)||'student')+'.docx'; document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(u); a.remove(); },900);
+    toast('워드(.docx)를 내려받았습니다.');
+  }catch(e){ toast('워드 생성이 막혔습니다 — PDF(인쇄)를 이용하세요.'); }
+}
+function a3DownloadStudentDoc(){ a3DownloadDoc(a3RowFromDraft(), SESS.student); }
+function a3PrintStudent(){ a3Print(a3RowFromDraft(), SESS.student); }
+function a3ProfData(sid){ if(MODE==='remote'){ return (a3view.sid===sid)? a3view.row : null; } return DB.activity3Of(sid); }
+function a3DownloadProfDoc(sid){ var st=stById(sid), d=a3ProfData(sid); if(!d){ toast('내용을 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'); return; } a3DownloadDoc(a3NormRow(d,st), st); }
+function a3PrintProf(sid){ var st=stById(sid), d=a3ProfData(sid); if(!d){ toast('내용을 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'); return; } a3Print(a3NormRow(d,st), st); }
+/* 교수 — 반별 엑셀(고정 슬롯: 공통3 + 그룹Q1~4 + 마무리3) */
+function a3Rows(){
+  var header=['반','이름','학번','면담그룹','제출여부','제출시각',
+    '공통Q1','공통Q1_보충','공통Q2','공통Q3(점수)','공통Q3_보충',
+    '그룹Q1','그룹Q1_보충','그룹Q2','그룹Q2_보충','그룹Q3','그룹Q3_보충','그룹Q4','그룹Q4_보충',
+    '마무리Q1','마무리Q2','마무리Q3(점수)','마무리Q3_보충'];
+  var rows=[header];
+  viewStudents().forEach(function(st){
+    var r=DB.activity3Of(st.id); var g=(r&&r.group)||igOf(st)||''; var ans=(r&&r.answers)||{};
+    var line=[st.klass, st.name, st.no, (g?('그룹'+g):'미배정'), r?'제출':'미제출', r?(r.submitted_at||''):''];
+    line.push(a3AnsText(IV_COMMON[0],ans), ans[IV_COMMON[0].id+'_f']||'');
+    line.push(a3AnsText(IV_COMMON[1],ans));
+    line.push(a3AnsText(IV_COMMON[2],ans), ans[IV_COMMON[2].id+'_f']||'');
+    var gq=(IV_GROUP[g]?IV_GROUP[g].qs:[]);
+    for(var i=0;i<4;i++){ var q=gq[i]; if(q){ line.push(a3AnsText(q,ans), (q.fu?(ans[q.id+'_f']||''):'')); } else { line.push('',''); } }
+    line.push(a3AnsText(IV_CLOSING[0],ans));
+    line.push(a3AnsText(IV_CLOSING[1],ans));
+    line.push(a3AnsText(IV_CLOSING[2],ans), ans[IV_CLOSING[2].id+'_f']||'');
+    rows.push(line);
+  });
+  return rows;
+}
+function doA3Excel(){ var c=viewClass(); downloadXlsx('bio_activity3_'+(c==='ALL'?'all':c)+'.xlsx', [{name:'3차활동', rows:a3Rows()}]); }
+function openA3Preview(){ enterStudentPreview(); go('a3'); }
+/* ---- 교수: 3차 활동 목록/상세 ---- */
+function viewA3List(){
+  var studs=viewStudents(), subCount=0;
+  var byg={'1':{t:0,s:0},'2':{t:0,s:0},'3':{t:0,s:0},'4':{t:0,s:0}}, un={t:0,s:0};
+  studs.forEach(function(st){ var g=igOf(st); var r=DB.activity3Of(st.id); var slot=byg[g]||un; slot.t++; if(r) slot.s++; });
+  var rows=studs.map(function(st){
+    var r=DB.activity3Of(st.id); if(r) subCount++;
+    var g=igOf(st);
+    var status=r? '<span class="pill t-start">제출 ✓</span>' : (g? '<span class="muted">미제출</span>':'<span class="muted">그룹 미배정</span>');
+    var btn=r? '<button class="btn sm gray" onclick="go(\'a3v:'+st.id+'\')">보기</button>':'';
+    return '<tr><td>'+st.klass+'</td><td>'+esc(st.name)+'</td><td>'+esc(st.no)+'</td><td>'+igBadge(g)+'</td><td>'+status+'</td><td class="muted">'+(r?esc(r.submitted_at||''):'')+'</td><td>'+btn+'</td></tr>';
+  }).join('');
+  var gsum=['1','2','3','4'].map(function(g){ return '그룹'+g+' '+byg[g].s+'/'+byg[g].t; }).join(' · ');
+  return '<div class="card"><h2>3차 활동 — 그룹 면담지 제출 현황 <span class="hint">— 보기: '+classLabel(viewClass())+'</span></h2>'+
+    '<p class="muted">제출 '+subCount+' / '+studs.length+'명 &nbsp;·&nbsp; '+gsum+(un.t?(' · 미배정 '+un.t+'명'):'')+'</p>'+
+    '<div class="row" style="margin:2px 0 10px">'+
+      '<button class="btn sm" onclick="doA3Excel()">⬇ 3차 활동 엑셀 다운로드</button>'+
+      '<button class="btn sm gray" onclick="openA3Preview()">👁 학생 화면 미리보기</button>'+
+      '<span class="hint">엑셀 = 반별 표(공통·그룹·마무리) · 개별 학생 Word/PDF는 아래 [보기]에서</span>'+
+    '</div>'+
+    (studs.length? '<table><tr><th>반</th><th>이름</th><th>학번</th><th>그룹</th><th>제출</th><th>제출시각</th><th></th></tr>'+rows+'</table>' : '<p class="muted">이 반은 등록된 학생이 없습니다.</p>')+
+  '</div>';
+}
+function viewA3Detail(sid){
+  var st=DB.d.students.filter(function(x){return x.id===sid;})[0];
+  var back='<div class="row" style="margin-top:12px"><button class="btn gray" onclick="go(\'a3list\')">← 목록</button></div>';
+  if(!st) return '<div class="card"><h2>3차 활동</h2><p class="muted">학생을 찾을 수 없습니다.</p>'+back+'</div>';
+  var row;
+  if(MODE==='remote'){
+    if(a3view.sid!==sid){
+      a3view={sid:sid, row:null, loading:true};
+      apiCall('getActivity3',{sid:sid}).then(function(res){ a3view={sid:sid, row:(res.j&&res.j.row)||null, loading:false}; render(); }).catch(function(){ a3view={sid:sid,row:null,loading:false}; toast('불러오기에 실패했습니다.'); render(); });
+      return '<div class="card"><h2>3차 활동 — '+esc(st.name)+'</h2><p class="muted">불러오는 중…</p>'+back+'</div>';
+    }
+    row=a3view.row;
+  } else { row=DB.activity3Of(sid); }
+  if(!row) return '<div class="card"><h2>3차 활동 — '+esc(st.name)+'</h2><p class="muted">아직 제출하지 않았습니다.</p>'+back+'</div>';
+  var g=(row.group||row.igroup||igOf(st)||''); var ans=row.answers||{};
+  var h='<div class="card"><h2>3차 활동 — '+esc(st.name)+' <span class="hint">'+esc(st.no)+' · '+st.klass+'반 · '+(g?('그룹'+g+' '+esc(ivGroupLabel(g))):'미배정')+'</span></h2>';
+  function sec(title, qs){ h+='<h3>'+esc(title)+'</h3>';
+    qs.forEach(function(q){ var main=a3AnsText(q,ans), fu=ans[q.id+'_f'];
+      h+='<div class="prof-card" style="margin-bottom:8px"><b>'+esc(q.text)+'</b>'+
+         '<div style="margin-top:6px"><span class="muted">답:</span> <b style="white-space:pre-wrap">'+esc(main||'—')+'</b></div>'+
+         (q.fu?('<div style="margin-top:6px"><span class="muted">→ '+esc(q.fu)+'</span><br><span style="white-space:pre-wrap">'+esc(fu||'—')+'</span></div>'):'')+'</div>';
+    });
+  }
+  sec('① 공통 질문', IV_COMMON);
+  sec('② 그룹 맞춤 질문 — '+ivGroupLabel(g), (IV_GROUP[g]?IV_GROUP[g].qs:[]));
+  sec('③ 마무리', IV_CLOSING);
+  h+='<p class="muted" style="margin-top:8px">제출 '+esc(row.submitted_at||'')+'</p>'+
+     '<div class="row" style="margin-top:6px">'+
+       '<button class="btn sm gray" onclick="a3DownloadProfDoc(\''+sid+'\')">⬇ 워드(.docx)</button>'+
+       '<button class="btn sm gray" onclick="a3PrintProf(\''+sid+'\')">🖨 PDF(인쇄)</button>'+
+     '</div>'+back;
+  return h+'</div>';
+}
+
 function esc(s){ return (''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 /* ============================================================================
@@ -2028,7 +2386,7 @@ function tryRestoreSession(){
     VIEW='hub'; return true;
   }
 }
-var PV_WRITE_ACTIONS={setConsent:1,saveResponse:1,saveActivity2:1,setEarly:1,deleteStudent:1,addStudent:1,updateStudent:1,deleteClass:1,registerRoster:1,setActivityActive:1};
+var PV_WRITE_ACTIONS={setConsent:1,saveResponse:1,saveActivity2:1,saveActivity3:1,setEarly:1,deleteStudent:1,addStudent:1,updateStudent:1,deleteClass:1,registerRoster:1,setActivityActive:1};
 function apiCall(action, params){
   if(SESS&&SESS.previewAsStudent&&PV_WRITE_ACTIONS[action]){
     toast('👁 미리보기 — 저장되지 않습니다.');
@@ -2048,6 +2406,7 @@ function applyBootstrap(d){
   DB.d.students  = (d.students||[]).map(mapStudent);
   DB.d.responses = (d.responses||[]).map(mapResp);
   DB.d.activity2 = (d.activity2||[]).map(function(r){ return {id:r.id, student_id:r.student_id, klass:r.klass, assets:r.assets||'', pros:r.pros||[], cons:r.cons||[], photos:(r.photos&&r.photos.slice)?r.photos:null, submitted_at:r.submitted_at}; });
+  DB.d.activity3 = (d.activity3||[]).map(function(r){ return {id:r.id, student_id:r.student_id, klass:r.klass, group:r.igroup||'', answers:r.answers||{}, submitted_at:r.submitted_at}; });
   DB.d.interviews = DB.d.interviews||[];
 }
 function doLoginRemote(role, nm, no){
