@@ -1441,7 +1441,7 @@ function viewInterviewGroups(){
   studs.forEach(function(st){ var g=igOf(st); if(by[g]) by[g].push(st); else un++; });
   var assigned=by['1'].length+by['2'].length+by['3'].length+by['4'].length;
   var h='<div class="card"><h2>면담 그룹 <span class="hint">— 보기: '+classLabel(viewClass())+' · 배정 '+assigned+'명</span></h2>'+
-    '<p class="muted">1차 진로설문 응답을 바탕으로 나눈 <b>그룹 면담</b> 편성입니다. 취업/편입 대분류 후 준비도·직무가 비슷한 학생끼리 묶었습니다. (현재 F2반 대상)</p>'+
+    '<p class="muted">1차 진로설문 응답을 바탕으로 나눈 <b>그룹 면담</b> 편성입니다. 취업/편입 대분류 후 준비도·직무가 비슷한 학생끼리 묶었습니다. (F1·F2·F3 전 반)</p>'+
     (assigned?'':'<p class="muted">이 보기에는 아직 면담 그룹이 배정된 학생이 없습니다.</p>');
   ['1','2','3','4'].forEach(function(g){
     var arr=by[g]; if(!arr.length) return;
