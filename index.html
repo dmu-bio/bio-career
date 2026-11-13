@@ -758,6 +758,8 @@ function exitStudentPreview(){
   var back=SESS.pvReturn||'hub'; SESS.pvProf=null; SESS.pvReturn=null; go(back);
 }
 var VIEW = 'login';
+var loginNotice = '';        /* 로그인 화면 위 안내(로그인 시간이 끝났을 때) */
+var sessionExpiredHandled = false;
 var restoringSession = false;   /* 지속 로그인 복원 중(remote bootstrap 재검증 대기) */
 var loginRole = 'student';
 var draft = {};   // 설문 작성 중 응답
@@ -769,7 +771,14 @@ var etcInvalid = {}; // '기타' 선택 후 내용 미입력으로 표시된 문
 var showValidateMsg = false; // 상단 안내 배너 표시 여부
 var submitting = false; // remote 제출 진행 중(중복 제출·경쟁 조건 방지)
 
-function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('on'); setTimeout(function(){t.classList.remove('on');},1800); }
+/* 알림: 성공·진행 안내는 짧게(1.8초), 오류·막힘 안내는 글자 수에 맞춰 길게(4~6초). 새 알림이 뜨면 이전 타이머를 지워 일찍 사라지지 않게 한다. */
+var toastTimer=null;
+function toastMs(m){
+  m=String(m||'');
+  if(!/실패|못했|못 |없습니다|막혔|만료|오류|끊|다시|확인하세요|확인해|불가|제한/.test(m)) return 1800;
+  return Math.min(6000, Math.max(4000, 2500+m.length*90));
+}
+function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('on'); clearTimeout(toastTimer); toastTimer=setTimeout(function(){t.classList.remove('on');},toastMs(m)); }
 function go(v){ if(v==='survey'){ stepIdx=0; invalid={}; showValidateMsg=false; } VIEW=v; render(); window.scrollTo(0,0); }
 
 /* ============================================================================
@@ -876,6 +885,7 @@ function viewLogin(){
   }
   return '<div class="card" style="max-width:440px;margin:40px auto">'+
     '<h2>바이오취업역량개발</h2>'+
+    (loginNotice?'<div class="note" role="alert" style="margin:8px 0 12px;background:#fff6e6;border-color:#f0d79a;color:#7a5a10">'+loginNotice+'</div>':'')+
     '<div class="seg" style="margin:8px 0 16px">'+
       '<button class="'+(loginRole==='student'?'on':'')+'" onclick="setRole(\'student\')">학생</button>'+
       '<button class="'+(loginRole==='prof'?'on':'')+'" onclick="setRole(\'prof\')">교수</button>'+
@@ -883,7 +893,7 @@ function viewLogin(){
     '<label>이름</label><input type="text" id="inName" placeholder="이름">'+
     '<label>'+(loginRole==='student'?'학번':'교번')+'</label><input type="text" id="inNum" placeholder="'+(loginRole==='student'?'학번':'교번')+'">'+
     '<div style="margin-top:16px"><button class="btn" onclick="doLogin()">들어가기</button></div>'+
-    '<div class="muted" style="margin-top:14px">비밀번호 없이 <b>명단 대조</b>로 확인합니다(PBL 앱과 동일).<br>'+
+    '<div class="muted" style="margin-top:14px">비밀번호 없이 <b>명단 대조</b>로 확인합니다.<br>'+
     (MODE==='local'
       ? '예시 로그인(테스트) — 학생: <b>예시학생01 / 90000100</b> · 교수(슈퍼): <b>예시교수A / T0001</b></div>'
       : '학생은 출석부의 <b>이름 + 학번</b>, 교수는 <b>이름 + 교번</b>으로 로그인합니다.</div>')+
@@ -2396,7 +2406,22 @@ function apiCall(action, params){
     method:'POST',
     headers:{'Authorization':'Bearer '+DBCONF.anon, 'Content-Type':'application/json'},
     body:JSON.stringify(Object.assign({action:action, token:sessionStorage.getItem(TOKENKEY)||''}, params||{}))
-  }).then(function(r){ return r.json().then(function(j){ return {status:r.status, j:j}; }); });
+  }).then(function(r){ return r.json().then(function(j){ return {status:r.status, j:j}; }); })
+  .then(function(res){
+    /* 로그인 시간이 끝났으면(401) 조용히 실패시키지 않고 로그인 화면으로 안내한다. 복원 중에는 복원 쪽이 따로 처리한다. */
+    if(res.status===401 && !restoringSession && SESS && SESS.role && !SESS.previewAsStudent){ handleSessionExpired(); }
+    return res;
+  });
+}
+function handleSessionExpired(){
+  if(sessionExpiredHandled) return;
+  sessionExpiredHandled=true;
+  loginNotice='로그인 시간이 끝났습니다. 방금 하신 저장은 되지 않았을 수 있으니, 다시 로그인한 뒤 확인해 주세요.';
+  clearSession(); try{ sessionStorage.removeItem(TOKENKEY); }catch(e){}
+  SESS={role:null,student:null,prof:null,classView:'ALL'}; draft={};
+  DB.d={students:[],responses:[],interviews:[],activity2:[],activity3:[]};
+  go('login');
+  toast('로그인 시간이 끝났습니다. 다시 로그인해 주세요.');
 }
 function mapStudent(s){ return {id:s.id, name:s.name, no:s.no, klass:s.klass, interviewGroup:s.interview_group||'', earlyEmployed:!!s.early_employed, earlyCompany:s.early_company||'', consent: s.consent_at?{agreed:true, at:s.consent_at}:undefined}; }
 function mapResp(r){ return {id:r.id, student_id:r.student_id, klass:r.klass, track:r.track, answers:r.answers||{}, submitted_at:r.submitted_at}; }
@@ -2419,6 +2444,7 @@ function doLoginRemote(role, nm, no){
   .then(function(res){
     if(!res.j || !res.j.ok){ toast((res.j&&res.j.error)||'로그인에 실패했습니다.'); return; }
     sessionStorage.setItem(TOKENKEY, res.j.token);
+    sessionExpiredHandled=false; loginNotice='';
     var user=res.j.user;
     return apiCall('bootstrap',{}).then(function(bs){
       if(bs.status!==200){ toast('데이터를 불러오지 못했습니다.'); return; }
